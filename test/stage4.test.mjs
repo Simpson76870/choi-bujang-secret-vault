@@ -173,6 +173,27 @@ test('POST ignores a forged owner_id and stores the verified identity', async ()
   assert.equal(supabase.queries[0].payload.owner_id, USER_B);
 });
 
+test('POST with server-generated ID returns the full single-note response shape', async () => {
+  const supabase = memorySupabase([]);
+  const response = responseRecorder();
+  const handler = createCollectionHandler(authenticatedAs(USER_B, supabase));
+  await handler({
+    method: 'POST',
+    url: '/api/notes',
+    headers: {},
+    body: { title: '자동 ID 메모', body: '가상 본문', owner_id: USER_A },
+  }, response);
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(Object.keys(response.payload).sort(), ['body', 'id', 'title']);
+  assert.match(response.payload.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
+  assert.equal(response.payload.title, '자동 ID 메모');
+  assert.equal(response.payload.body, '가상 본문');
+  assert.equal(supabase.rows[0].id, response.payload.id);
+  assert.equal(supabase.rows[0].owner_id, USER_B);
+  assert.equal(supabase.queries[0].payload.owner_id, USER_B);
+});
+
 test('collection GET lists rows only for the authenticated owner', async () => {
   const supabase = memorySupabase([
     makeNote(NOTE_ID, USER_A, 'A 메모'),
