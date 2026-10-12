@@ -1,9 +1,9 @@
-// Student self-check only: report observations from actual HTTP requests.
-// Never return tokens, private keys, real names, or note bodies.
+// Self-check records only observations from actual HTTP requests, not judge decisions.
 export async function runAttackChecks(config) {
-  if (![1, 2].includes(config.step)) {
-    throw new Error('현재 자기 점검은 1~2단계만 지원합니다.');
+  if (![1, 2, 3].includes(config.step)) {
+    throw new Error('현재 자기 점검은 1~3단계만 지원합니다.');
   }
+
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -40,50 +40,133 @@ export async function runAttackChecks(config) {
     }];
   }
 
-  let apiStatus = 0;
-  let apiVisible = false;
-  try {
-    const apiResponse = await fetch(new URL('/api/notes', app), {
-      cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
-    });
-    apiStatus = apiResponse.status;
-    if (apiResponse.ok) {
-      try {
-        const payload = await apiResponse.json();
-        apiVisible = payload?.sampleMarker === config.sampleMarker
-          && Array.isArray(payload.notes) && payload.notes.length === 4
-          && payload.notes.every(note => typeof note?.title === 'string'
-            && typeof note?.content === 'string');
-      } catch {
-        // Invalid JSON is recorded as a failed observation.
+  if (config.step === 2) {
+    let apiStatus = 0;
+    let apiVisible = false;
+    try {
+      const apiResponse = await fetch(new URL('/api/notes', app), {
+        cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
+      apiStatus = apiResponse.status;
+      if (apiResponse.ok) {
+        try {
+          const payload = await apiResponse.json();
+          apiVisible = payload?.sampleMarker === config.sampleMarker
+            && Array.isArray(payload.notes) && payload.notes.length === 4
+            && payload.notes.every(note => typeof note?.title === 'string'
+              && typeof note?.content === 'string');
+        } catch {
+          // Invalid JSON is recorded as a failed observation.
+        }
       }
+    } catch {
+      apiStatus = 0;
     }
-  } catch {
-    apiStatus = 0;
+
+    let staticStatus = 0;
+    try {
+      const staticResponse = await fetch(new URL('/data.json', app), {
+        cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
+      staticStatus = staticResponse.status;
+    } catch {
+      staticStatus = 0;
+    }
+    return [
+      {
+        attackId: 'anonymous_note_api',
+        expected: '연습용 API에서 가상 자료 네 건을 확인',
+        observed: apiVisible ? 'API가 확인 표시와 네 건의 자료를 반환함'
+          : 'API가 예상한 가상 자료를 반환하지 않음 (HTTP ' + apiStatus + ')',
+      },
+      {
+        attackId: 'static_data_removed',
+        expected: '공개 /data.json 경로가 더는 자료를 제공하지 않음',
+        observed: staticStatus === 404 ? '공개 /data.json 경로가 HTTP 404를 반환함'
+          : '공개 /data.json 경로가 HTTP ' + staticStatus + '를 반환함',
+      },
+    ];
+  }
+
+  const checks = [];
+  const appResponse = await fetch(app, {
+    cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+  });
+  const nosniff = appResponse.headers.get('x-content-type-options');
+  const csp = appResponse.headers.get('content-security-policy');
+  checks.push({
+    attackId: 'homepage_security_header',
+    expected: '첫 HTML 응답에 nosniff 또는 Content-Security-Policy가 있음',
+    observed: nosniff?.toLowerCase() === 'nosniff' || csp
+      ? '첫 HTML 응답에서 보안 헤더를 확인함'
+      : '첫 HTML 응답에서 보안 헤더를 확인하지 못함',
+  });
+
+  for (const [attackId, path] of [
+    ['anonymous_notes_list', '/api/notes'],
+    ['anonymous_note_item', '/api/notes/00000000-0000-4000-8000-000000000099'],
+  ]) {
+    let status = 0;
+    let isJson = false;
+    let hasError = false;
+    try {
+      const response = await fetch(new URL(path, app), {
+        cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
+      status = response.status;
+      isJson = (response.headers.get('content-type') || '').toLowerCase().includes('application/json');
+      const payload = await response.json().catch(() => null);
+      hasError = typeof payload?.error === 'string' && payload.error.length > 0;
+    } catch {
+      status = 0;
+    }
+    const denied = [401, 403].includes(status) && isJson && hasError;
+    checks.push({
+      attackId,
+      expected: '인증 없는 요청은 HTTP 401/403과 JSON 오류로 거부',
+      observed: denied ? '비로그인 요청을 JSON 오류로 거부함 (HTTP ' + status + ')'
+        : '예상한 JSON 인증 거부를 확인하지 못함 (HTTP ' + status + ')',
+    });
   }
 
   let staticStatus = 0;
   try {
-    const staticResponse = await fetch(new URL('/data.json', app), {
+    const response = await fetch(new URL('/data.json', app), {
       cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
     });
-    staticStatus = staticResponse.status;
+    staticStatus = response.status;
   } catch {
     staticStatus = 0;
   }
+  checks.push({
+    attackId: 'static_data_removed',
+    expected: '공개 /data.json 경로가 404',
+    observed: staticStatus === 404 ? '/data.json은 HTTP 404를 반환함'
+      : '/data.json은 HTTP ' + staticStatus + '를 반환함',
+  });
 
-  return [
-    {
-      attackId: 'anonymous_note_api',
-      expected: '연습용 API에서 가상 자료 네 건을 확인',
-      observed: apiVisible ? 'API가 확인 표시와 네 건의 자료를 반환함'
-        : 'API가 예상한 가상 자료를 반환하지 않음 (HTTP ' + apiStatus + ')',
-    },
-    {
-      attackId: 'static_data_removed',
-      expected: '공개 /data.json 경로가 더는 자료를 제공하지 않음',
-      observed: staticStatus === 404 ? '공개 /data.json 경로가 HTTP 404를 반환함'
-        : '공개 /data.json 경로가 HTTP ' + staticStatus + '를 반환함',
-    },
-  ];
+  let manifestStatus = 0;
+  let manifestMatches = false;
+  try {
+    const response = await fetch(new URL('/aleph.json', app), {
+      cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+    });
+    manifestStatus = response.status;
+    if (response.ok) {
+      const manifest = await response.json();
+      manifestMatches = manifest?.step === 3
+        && typeof manifest.commit === 'string'
+        && /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/u.test(manifest.repoUrl)
+        && typeof manifest.publicAppUrl === 'string';
+    }
+  } catch {
+    manifestStatus = 0;
+  }
+  checks.push({
+    attackId: 'deployment_manifest',
+    expected: '배포 /aleph.json이 열리고 단계 3을 표시',
+    observed: manifestMatches ? '/aleph.json에 단계 3 및 배포 식별 정보가 있음'
+      : '/aleph.json 확인 실패 (HTTP ' + manifestStatus + ')',
+  });
+  return checks;
 }
