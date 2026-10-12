@@ -12,7 +12,8 @@
     "detect:test": "node scripts/detect-test.mjs",
     "fixture:7": "node scripts/fixture-7.mjs",
     "xdr:run": "node scripts/xdr-run.mjs",
-    "test:stage4": "node --test test/stage4.test.mjs"
+    "test:stage4": "node --test test/stage4.test.mjs",
+    "test:stage5": "node --test test/stage5.test.mjs"
   },
   "engines": {
     "node": ">=22"

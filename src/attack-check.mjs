@@ -1,7 +1,7 @@
 // Self-check records only observations from actual HTTP requests, not judge decisions.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4].includes(config.step)) {
-    throw new Error('현재 자기 점검은 1~4단계만 지원합니다.');
+  if (![1, 2, 3, 4, 5].includes(config.step)) {
+    throw new Error('현재 자기 점검은 1~5단계만 지원합니다.');
   }
 
   let app;
@@ -176,7 +176,17 @@ export async function runAttackChecks(config) {
     if (publishableKey) {
       try {
         const apiBase = config.identityProvider.issuer.replace(/\/auth\/v1\/?$/u, '');
-        const directResponse = await fetch(new URL('/rest/v1/training_notes?select=id&limit=1', apiBase), {
+        const directUrl = config.step >= 5
+          ? new URL(config.originalApiUrl)
+          : new URL('/rest/v1/training_notes', apiBase);
+        if (directUrl.protocol !== 'https:' || directUrl.origin !== apiBase
+            || directUrl.pathname !== '/rest/v1/training_notes'
+            || directUrl.search || directUrl.hash) {
+          throw new Error('originalApiUrl must be the query-free HTTPS training_notes endpoint.');
+        }
+        directUrl.searchParams.set('select', 'id');
+        directUrl.searchParams.set('limit', '1');
+        const directResponse = await fetch(directUrl, {
           headers: { apikey: publishableKey, Accept: 'application/json' },
           cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
         });
