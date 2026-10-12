@@ -12,13 +12,13 @@ test('패키징 함수 기준표는 시작 틀의 실제 API와 일치한다', a
   assert.equal(baseline.version, 1);
   assert.equal(baseline.starter, 'ChoiTimo/aleph-defense-starter');
   assert.deepEqual(baseline.functions, []);
-  assert.deepEqual(baseline.allowedNew, ['api/ai.js', 'api/threat-intel.js']);
+  assert.deepEqual(baseline.allowedNew, ['api/ai.js', 'api/notes.js', 'api/threat-intel.js']);
   assert.deepEqual(actual, [...baseline.functions, ...baseline.allowedNew].sort());
 });
 
 test('미구현 서버 뼈대는 성공이나 로그인 통과로 가장하지 않는다', async () => {
   for (const name of ['ai', 'threat-intel']) {
-    const { default: handler } = await import(`../api/${name}.js`);
+    const { default: handler } = await import('../api/' + name + '.js');
     const headers = new Map();
     let status;
     let body;
