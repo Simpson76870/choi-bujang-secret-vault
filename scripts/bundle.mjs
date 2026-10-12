@@ -36,8 +36,21 @@ try {
     if (error.message?.startsWith('origin 주소가') || error.message?.startsWith('GitHub HTTPS')) throw error;
     fail('GitHub HTTPS 저장소 주소를 origin으로 등록해 주세요.');
   }
-  const changedFiles = git('diff-tree', '--root', '--no-commit-id', '--name-only', '--no-renames', '-r', commit)
-    .split(/\r?\n/u).filter(Boolean).sort();
+  const changesetBase = process.env.ALEPH_CHANGED_FILES_BASE;
+  let changedFiles;
+  if (changesetBase) {
+    if (!SHA.test(changesetBase)) fail('ALEPH_CHANGED_FILES_BASE must be a full commit SHA.');
+    try {
+      git('merge-base', '--is-ancestor', changesetBase, commit);
+    } catch {
+      fail('ALEPH_CHANGED_FILES_BASE must be an ancestor of the current commit.');
+    }
+    changedFiles = git('diff', '--name-only', '--no-renames', changesetBase + '...' + commit)
+      .split(/\r?\n/u).filter(Boolean).sort();
+  } else {
+    changedFiles = git('diff-tree', '--root', '--no-commit-id', '--name-only', '--no-renames', '-r', commit)
+      .split(/\r?\n/u).filter(Boolean).sort();
+  }
   if (!changedFiles.length) fail('마지막 커밋에 바뀐 파일이 없습니다.');
   const config = fromCommit('aleph.config.json');
   if (normalizedRepo(config.repoUrl) !== repoUrl) {

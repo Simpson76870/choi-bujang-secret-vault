@@ -73,13 +73,9 @@ jobs:
 
       - name: Generate stage 3 submission JSON
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          ALEPH_CHANGED_FILES_BASE: 1788aa3703d43255cde8b3db41d71064ed9b93d4
         run: |
-          savepoint="$(git log --format='%H%x09%s' --first-parent | awk -F '\\t' '$2 == "3단계 저장점" { print $1; exit }')"
-          if [ -z "$savepoint" ]; then
-            echo "3단계 저장점 커밋을 찾을 수 없습니다."
-            exit 1
-          fi
-          git checkout --detach "$savepoint"
           printf '%s\n' '{"explanation":"3단계: Supabase Auth 로그인과 서버 토큰 검증을 추가하고, 로그인 계정으로 가상 메모의 추가·수정·삭제 API를 구현했습니다. 메모별 소유자 검사는 4단계에 남겼습니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
