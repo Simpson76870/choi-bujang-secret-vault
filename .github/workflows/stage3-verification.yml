@@ -1,10 +1,11 @@
-name: Stage 3 verification
+name: Stage 4 verification
 
 on:
   push:
     branches:
       - main
       - stage3-auth-crud
+      - stage4-owner-check
   pull_request:
     branches:
       - main
@@ -13,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-stage3:
+  verify-stage4:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -32,7 +33,7 @@ jobs:
         run: npm ci
 
       - name: Run unit and package tests
-        run: npm run test:r5 && npm run test:stage3 && npm run test:package
+        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:package
 
       - name: Build deployment identity manifest
         env:
@@ -56,8 +57,8 @@ jobs:
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
-              && [ "$manifest_status" = "200" ] && grep -q '"step": 3' /tmp/aleph-response.json; then
-              echo "Unauthenticated API returned JSON 401; /aleph.json reports stage 3."
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 4' /tmp/aleph-response.json; then
+              echo "Unauthenticated API returned JSON 401; /aleph.json reports stage 4."
               ready=1
               break
             fi
@@ -71,12 +72,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate stage 3 submission JSON
+      - name: Generate stage 4 submission JSON
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          ALEPH_CHANGED_FILES_BASE: 1788aa3703d43255cde8b3db41d71064ed9b93d4
+          ALEPH_CHANGED_FILES_BASE: 8f2aed503f1f8cc1387730ee206e2e51d4e77b3f
         run: |
-          printf '%s\n' '{"explanation":"3단계: Supabase Auth 로그인과 서버 토큰 검증을 추가하고, 로그인 계정으로 가상 메모의 추가·수정·삭제 API를 구현했습니다. 메모별 소유자 검사는 4단계에 남겼습니다."}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"4단계: 단건 메모 조회·수정·삭제를 검증된 사용자 소유자로 제한하고, POST/PUT의 owner_id를 인증된 ID로 고정했습니다. 직접 Data API는 anon 권한 거부와 authenticated RLS 정책을 검증합니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
@@ -88,21 +89,22 @@ jobs:
           import { readFileSync } from 'node:fs';
           const bundle = JSON.parse(readFileSync('artifacts/submission.json', 'utf8'));
           assert.equal(bundle.schema, 'aleph.defense.submission.v2');
-          assert.equal(bundle.step, 3);
+          assert.equal(bundle.step, 4);
           const observed = new Map(bundle.attackAttempts.map(item => [item.attackId, item.observed]));
           assert.match(observed.get('homepage_security_header') ?? '', /보안 헤더/u);
           assert.match(observed.get('anonymous_notes_list') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('anonymous_note_item') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
-          assert.match(observed.get('deployment_manifest') ?? '', /단계 3/u);
-          console.log('3단계 실배포 검사 다섯 항목이 모두 기대한 결과를 냈습니다.');
+          assert.match(observed.get('deployment_manifest') ?? '', /단계 4/u);
+          assert.match(observed.get('anonymous_direct_data_api') ?? '', /anon direct Data API는 권한 오류로 거부함/u);
+          console.log('4단계 실배포 검사 여섯 항목이 모두 기대한 결과를 냈습니다.');
           NODE
 
-      - name: Upload stage 3 submission JSON
+      - name: Upload stage 4 submission JSON
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: stage3-submission
+          name: stage4-submission
           path: artifacts/submission.json
           if-no-files-found: warn
           retention-days: 14

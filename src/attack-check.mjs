@@ -1,7 +1,7 @@
 // Self-check records only observations from actual HTTP requests, not judge decisions.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3].includes(config.step)) {
-    throw new Error('현재 자기 점검은 1~3단계만 지원합니다.');
+  if (![1, 2, 3, 4].includes(config.step)) {
+    throw new Error('현재 자기 점검은 1~4단계만 지원합니다.');
   }
 
   let app;
@@ -94,6 +94,8 @@ export async function runAttackChecks(config) {
   });
   const nosniff = appResponse.headers.get('x-content-type-options');
   const csp = appResponse.headers.get('content-security-policy');
+  const homeHtml = await appResponse.text().catch(() => '');
+  const publishableKey = /const\s+SUPABASE_PUBLISHABLE_KEY\s*=\s*['"]([^'"]+)['"]/u.exec(homeHtml)?.[1] ?? null;
   checks.push({
     attackId: 'homepage_security_header',
     expected: '첫 HTML 응답에 nosniff 또는 Content-Security-Policy가 있음',
@@ -154,7 +156,7 @@ export async function runAttackChecks(config) {
     manifestStatus = response.status;
     if (response.ok) {
       const manifest = await response.json();
-      manifestMatches = manifest?.step === 3
+      manifestMatches = manifest?.step === config.step
         && typeof manifest.commit === 'string'
         && /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/u.test(manifest.repoUrl)
         && typeof manifest.publicAppUrl === 'string';
@@ -164,9 +166,33 @@ export async function runAttackChecks(config) {
   }
   checks.push({
     attackId: 'deployment_manifest',
-    expected: '배포 /aleph.json이 열리고 단계 3을 표시',
-    observed: manifestMatches ? '/aleph.json에 단계 3 및 배포 식별 정보가 있음'
+    expected: '배포 /aleph.json이 열리고 단계 ' + config.step + '을 표시',
+    observed: manifestMatches ? '/aleph.json에 단계 ' + config.step + ' 및 배포 식별 정보가 있음'
       : '/aleph.json 확인 실패 (HTTP ' + manifestStatus + ')',
   });
+
+  if (config.step >= 4) {
+    let dataApiStatus = 0;
+    if (publishableKey) {
+      try {
+        const apiBase = config.identityProvider.issuer.replace(/\/auth\/v1\/?$/u, '');
+        const directResponse = await fetch(new URL('/rest/v1/training_notes?select=id&limit=1', apiBase), {
+          headers: { apikey: publishableKey, Accept: 'application/json' },
+          cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+        });
+        dataApiStatus = directResponse.status;
+        await directResponse.arrayBuffer().catch(() => undefined);
+      } catch {
+        dataApiStatus = 0;
+      }
+    }
+    const anonDenied = [401, 403].includes(dataApiStatus);
+    checks.push({
+      attackId: 'anonymous_direct_data_api',
+      expected: 'publishable/anon 키의 직접 Data API SELECT는 권한 오류로 거부',
+      observed: anonDenied ? 'anon direct Data API는 권한 오류로 거부함 (HTTP ' + dataApiStatus + ')'
+        : 'anon direct Data API 권한 거부를 확인하지 못함 (HTTP ' + dataApiStatus + ')',
+    });
+  }
   return checks;
 }
