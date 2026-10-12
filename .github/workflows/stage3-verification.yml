@@ -53,17 +53,18 @@ jobs:
           ready=0
           status="unknown"
           manifest_status="unknown"
-          for attempt in $(seq 1 12); do
+          for attempt in $(seq 1 45); do
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
-              && [ "$manifest_status" = "200" ] && grep -q '"step": 4' /tmp/aleph-response.json; then
-              echo "Unauthenticated API returned JSON 401; /aleph.json reports stage 4."
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 4' /tmp/aleph-response.json \
+              && grep -q "\"commit\": \"$GITHUB_SHA\"" /tmp/aleph-response.json; then
+              echo "Unauthenticated API returned JSON 401; /aleph.json matches stage 4 commit $GITHUB_SHA."
               ready=1
               break
             fi
-            echo "Attempt $attempt: API HTTP $status; /aleph.json HTTP $manifest_status"
-            sleep 5
+            echo "Attempt $attempt: API HTTP $status; /aleph.json HTTP $manifest_status; waiting for commit $GITHUB_SHA."
+            sleep 10
           done
           if [ "$ready" != "1" ]; then
             echo "Public production endpoint did not pass readiness checks."
