@@ -1,25 +1,43 @@
-# BYTE BACK 방어전 시작 틀 R5
+# BYTE BACK 방어전 시작 틀 — 2단계 저장점
 
-이 저장소는 1단계에서 학생 본인이 GitHub 저장소와 Vercel 배포를 만드는 출발점입니다. 포함된 메모 네 건은 가상 자료입니다. 실제 학생 자료, 토큰, 비밀키를 넣지 마세요.
+이 저장소는 2단계 자료 분리 실습용입니다. 네 건의 자료는 모두 가상 연습 데이터이며 Supabase의 `training_notes` 테이블에서 가져옵니다. 실제 학생 자료, 개인정보, 토큰 또는 비밀 키를 넣지 마세요.
 
-## 학생이 하는 일: 세 걸음
+## 현재 동작
 
-1. GitHub 계정을 만듭니다.
-2. 방어전 1단계 카드의 **Deploy** 버튼을 누릅니다. Vercel에 GitHub로 로그인하고, 새 저장소가 **본인 계정의 Public 저장소**인지 확인한 뒤 Deploy를 누릅니다.
-3. 배포가 끝나면 화면에 나온 `https://…vercel.app` 주소를 방어전 1단계 카드에 붙여넣고 제출합니다. 저장소 주소나 설정 파일은 적지 않습니다.
+- 홈페이지는 `/api/notes`를 호출해 데이터베이스에서 가상 자료를 읽습니다.
+- 자료 본문은 루트나 정적 폴더의 JSON 파일로 제공하지 않습니다.
+- `/api/notes`는 단계 2 연습을 위해 의도적으로 로그인 없이 호출할 수 있습니다. 지금은 고정된 가상 소유자 ID의 자료만 반환합니다. 이것은 실제 사용자 자료를 보호하는 완성된 인증 모델이 아닙니다.
+- 배포 시 `/aleph.json`에 저장소·커밋·배포 주소와 단계가 생성됩니다.
+- 정적 응답에는 `X-Content-Type-Options: nosniff` 등 보안 헤더를 적용합니다.
 
-배포가 끝나면 `/`에서 점령된 가상 자료실을 볼 수 있습니다. `/data.json`에는 같은 가상 메모가 공개됩니다. 이 공개 상태를 확인하는 것이 1단계의 출발점입니다. 1단계 접수와 심판 판정은 포털에서 확인합니다.
+## Supabase 및 Vercel 설정
 
-## 시작 틀의 자동 처리
+Supabase 프로젝트의 SQL Editor 또는 연결된 Supabase 관리 도구에서 `supabase/stage2-training-notes.sql`을 실행하세요. 이 SQL은 테이블과 권한만 설정합니다. 테이블은 `owner_id uuid`를 가지며 `auth.users` 외래 키를 만들지 않습니다. RLS가 켜져 있고 `anon` 및 `authenticated` 역할에는 테이블 읽기 권한을 주지 않습니다. 서버 함수는 서버 전용 키로만 조회합니다.
 
-`vercel.json`은 정적 결과물 `public`을 배포합니다. 빌드 명령 `npm run build`는 Vercel이 제공하는 GitHub 저장소 소유자·이름, 커밋 SHA, 배포 URL을 검증하고 `public/aleph.json`을 생성합니다. 이 값이 없으면 빌드가 실패하므로, 성공한 것처럼 빈 주소를 내보내지 않습니다. `aleph.json`의 내용만으로 저장소 소유권이나 방어 성공을 인정하지 않습니다. 심판이 공개 저장소의 실제 커밋과 배포된 자료를 따로 대조해야 합니다.
+Vercel 프로젝트의 Settings → Environment Variables에서 다음 환경 변수를 Production 및 Preview 환경에 설정한 뒤 새 배포를 실행하세요.
 
-`aleph.config.json`의 `repoUrl`과 `publicAppUrl`은 이전 제출 묶음 방식의 자리표시자입니다. 1단계에서는 학생이 편집하지 않습니다. 2단계 이후 코딩 도구가 필요한 설정과 보호 기능을 단계별로 작성합니다. `npm run bundle`과 `bundle-notes.json`도 1단계의 세 걸음에는 포함되지 않습니다.
+- `SUPABASE_URL`: Supabase 프로젝트 API URL
+- `SUPABASE_SECRET_KEY`: Supabase의 서버 전용 secret key. 브라우저용 publishable/anon key를 대신 사용하지 마세요.
 
-로컬에서 가상 화면만 확인할 때는 `npm run build -- --local`을 사용합니다. 로컬 실행은 Vercel 배포나 심판 접수를 증명하지 않습니다. 저장소의 `src/attack-check.mjs`는 실제 배포가 된 뒤 `/data.json`을 비로그인으로 요청해 공개 가상 메모의 확인 표시를 읽습니다.
+키를 코드, Git, 브라우저 응답, URL 또는 로그에 넣지 마세요. 키 값을 채팅으로 보내지 않아도 됩니다. 이 저장소의 현재 Supabase 프로젝트 URL은 `https://hjuczlxovnghkljzygoz.supabase.co`입니다. Vercel 환경 설정에서 값 자체는 비밀 입력란에 직접 붙여넣으세요. 환경 변수를 추가하거나 바꾼 뒤에는 반드시 새 배포가 필요합니다.
+
+## 확인 방법
+
+배포 후 브라우저 개발자 도구 또는 터미널에서 확인하세요.
+
+- `/`는 API가 정상일 때 가상 자료 네 건을 표시합니다.
+- `/api/notes`는 JSON을 반환하고 `Cache-Control: no-store` 및 `X-Content-Type-Options: nosniff` 응답 헤더를 포함해야 합니다.
+- `/data.json`은 HTTP 404여야 합니다.
+- `/aleph.json`은 현재 단계, 실제 Git 커밋 및 Vercel 배포 정보를 포함한 JSON이어야 합니다.
+- GitHub 현재 브랜치 파일과 최신 배포의 정적 산출물에서 가상 자료의 제목이나 본문에 포함된 고유 문구를 각각 검색하세요. 제목·본문 문자열을 README나 테스트 픽스처에 복사해 검색 기준 자체가 검출되는 상황을 피하고, 별도의 임시 검색어 파일을 사용하세요.
+- 과거 공개 Git 커밋과 과거 Vercel 배포는 이번 변경으로 삭제되지 않습니다. 새 브랜치에서 정적 파일을 지워도 과거 커밋이나 배포 기록까지 지워졌다고 간주하면 안 됩니다.
+
+## 빌드 및 제출 점검
+
+로컬에서 `npm run build -- --local`을 실행하면 `public/data.json`을 다시 만들지 않고 기존 파일도 제거합니다. Vercel의 일반 배포 빌드는 `public/aleph.json`을 생성합니다. 실제 배포가 끝난 뒤 `aleph.config.json`의 `publicAppUrl`이 현재 프로덕션 주소와 일치하는지 확인하세요.
+
+`npm run test:r5`와 `npm run test:package`는 로컬 자기 점검이며 운영 심판의 판정이 아닙니다. 제출 묶음이 필요하면 루트에 무시 대상 파일인 `bundle-notes.json`을 만들고 설명을 작성한 후 `npm run bundle`을 실행합니다. `bundle-notes.json`과 `artifacts/submission.json`은 커밋하지 마세요. 번들 점검은 배포 주소를 실제 배포로 갱신하고 API를 확인한 이후 실행해야 합니다.
 
 ## 다음 단계의 코딩 도구에 전달할 규칙
 
-[AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계부터는 자료 보호를 구현할 때 `public/data.json`을 복사하는 1단계 빌드 흐름도 함께 바꿔야 합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
-
-`src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
+[AGENTS.md](AGENTS.md)를 먼저 읽고 한 번에 한 제작 단위만 변경하세요. 이 단계의 비로그인 API는 의도적인 교육용 허점입니다. 다음 단계에서 인증과 접근 제어를 구현하기 전까지 실제 자료를 넣지 마세요. `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 운영 엔진이나 심판의 판정이 아닙니다.
