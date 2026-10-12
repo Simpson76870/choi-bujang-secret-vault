@@ -53,10 +53,10 @@ function memorySupabase(initialRows) {
         },
         async maybeSingle() {
           if (this.operation === 'update') {
+            queries.push({ operation: this.operation, filters: [...this.filters], payload: { ...this.payload } });
             const existing = this.matchingRows()[0];
             if (!existing) return { data: null, error: null };
             Object.assign(existing, this.payload);
-            queries.push({ operation: this.operation, filters: [...this.filters], payload: { ...this.payload } });
             return { data: { ...existing }, error: null };
           }
           const existing = this.matchingRows()[0];
