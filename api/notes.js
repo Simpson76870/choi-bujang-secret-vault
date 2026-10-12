@@ -22,7 +22,8 @@ function present(note) {
   return { id: note.id, title: note.title, body: note.content };
 }
 
-export default async function handler(request, response) {
+export function createCollectionHandler(authenticate = authenticateStudent) {
+  return async function handler(request, response) {
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Referrer-Policy', 'no-referrer');
@@ -32,7 +33,7 @@ export default async function handler(request, response) {
     return response.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
   }
 
-  const context = await authenticateStudent(request, response);
+  const context = await authenticate(request, response);
   if (!context) return;
 
   if (request.method === 'GET') {
@@ -93,4 +94,7 @@ export default async function handler(request, response) {
   } catch {
     return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
   }
+  };
 }
+
+export default createCollectionHandler();
