@@ -27,7 +27,7 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 | Method | Path | 동작 |
 | --- | --- | --- |
 | GET | `/api/notes` | 로그인 사용자 소유자의 메모 배열 `{ notes: [{ id, title, body }] }` |
-| POST | `/api/notes` | `{ id?, title, body }`로 메모 생성. id가 없으면 서버에서 UUID를 만들고 `{ id }`를 반환 |
+| POST | `/api/notes` | `{ id?, title, body }`로 메모 생성. id가 없으면 서버에서 UUID를 만들고 `{ id, title, body }`를 반환 |
 | GET | `/api/notes/:id` | 메모 한 건 `{ id, title, body }`; 없으면 404 |
 | PUT | `/api/notes/:id` | `{ title, body }`로 메모 수정 |
 | DELETE | `/api/notes/:id` | 삭제 결과 `{ id, deleted: true }`; 이미 없으면 404 |

@@ -90,7 +90,7 @@ export function createCollectionHandler(authenticate = authenticateStudent) {
       return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
     }
 
-    return response.status(201).json(generatedId ? { id: data.id } : present(data));
+    return response.status(201).json(present(data));
   } catch {
     return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
   }
