@@ -1,0 +1,104 @@
+name: Stage 3 verification
+
+on:
+  push:
+    branches:
+      - main
+      - stage3-auth-crud
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify-stage3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run unit and package tests
+        run: npm run test:r5 && npm run test:stage3 && npm run test:package
+
+      - name: Build deployment identity manifest
+        env:
+          VERCEL_GIT_PROVIDER: github
+          VERCEL_GIT_REPO_OWNER: Simpson76870
+          VERCEL_GIT_REPO_SLUG: choi-bujang-secret-vault
+          VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
+          VERCEL_URL: choi-bujang-secret-vault-git-main-simpson76870.vercel.app
+        run: npm run build
+
+      - name: Wait for public production branch to be ready
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://choi-bujang-secret-vault-git-main-simpson76870.vercel.app"
+          ready=0
+          status="unknown"
+          manifest_status="unknown"
+          for attempt in $(seq 1 12); do
+            status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
+            manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
+            if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 3' /tmp/aleph-response.json; then
+              echo "Unauthenticated API returned JSON 401; /aleph.json reports stage 3."
+              ready=1
+              break
+            fi
+            echo "Attempt $attempt: API HTTP $status; /aleph.json HTTP $manifest_status"
+            sleep 5
+          done
+          if [ "$ready" != "1" ]; then
+            echo "Public production endpoint did not pass readiness checks."
+            cat /tmp/notes-response.json 2>/dev/null || true
+            cat /tmp/aleph-response.json 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Generate stage 3 submission JSON
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          printf '%s\n' '{"explanation":"3단계: Supabase Auth 로그인과 서버 토큰 검증을 추가하고, 로그인 계정으로 가상 메모의 추가·수정·삭제 API를 구현했습니다. 메모별 소유자 검사는 4단계에 남겼습니다."}' > bundle-notes.json
+          npm run bundle
+          cat artifacts/submission.json
+
+      - name: Verify live checks in the submission
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const bundle = JSON.parse(readFileSync('artifacts/submission.json', 'utf8'));
+          assert.equal(bundle.schema, 'aleph.defense.submission.v2');
+          assert.equal(bundle.step, 3);
+          const observed = new Map(bundle.attackAttempts.map(item => [item.attackId, item.observed]));
+          assert.match(observed.get('homepage_security_header') ?? '', /보안 헤더/u);
+          assert.match(observed.get('anonymous_notes_list') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
+          assert.match(observed.get('anonymous_note_item') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
+          assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
+          assert.match(observed.get('deployment_manifest') ?? '', /단계 3/u);
+          console.log('3단계 실배포 검사 다섯 항목이 모두 기대한 결과를 냈습니다.');
+          NODE
+
+      - name: Upload stage 3 submission JSON
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3-submission
+          path: artifacts/submission.json
+          if-no-files-found: warn
+          retention-days: 14
