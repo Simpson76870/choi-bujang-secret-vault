@@ -57,19 +57,19 @@ jobs:
           ready=0
           status="unknown"
           manifest_status="unknown"
-          expected_runtime_sha="$(git log -1 --format='%H' -- api/notes public/index.html src/notes-runtime.mjs src/verify-login.mjs aleph.config.json vercel.json package.json package-lock.json scripts/build-public.mjs)"
-          if [ -z "$expected_runtime_sha" ]; then echo "Could not resolve the latest runtime-source commit."; exit 1; fi
+          expected_deployment_sha="$GITHUB_SHA"
+          if ! [[ "$expected_deployment_sha" =~ ^[a-f0-9]{40}$ ]]; then echo "Could not resolve the workflow commit SHA."; exit 1; fi
           for attempt in $(seq 1 45); do
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
               && [ "$manifest_status" = "200" ] && grep -q '"step": 9' /tmp/aleph-response.json \
-              && grep -q "\"commit\": \"$expected_runtime_sha\"" /tmp/aleph-response.json; then
-              echo "Unauthenticated API returned JSON 401; /aleph.json matches runtime-source commit $expected_runtime_sha (workflow commit $GITHUB_SHA)."
+              && grep -q "\"commit\": \"$expected_deployment_sha\"" /tmp/aleph-response.json; then
+              echo "Unauthenticated API returned JSON 401; /aleph.json matches deployed commit $expected_deployment_sha."
               ready=1
               break
             fi
-            echo "Attempt $attempt: API HTTP $status; /aleph.json HTTP $manifest_status; waiting for runtime-source commit $expected_runtime_sha (workflow commit $GITHUB_SHA)."
+            echo "Attempt $attempt: API HTTP $status; /aleph.json HTTP $manifest_status; waiting for deployed commit $expected_deployment_sha."
             sleep 10
           done
           if [ "$ready" != "1" ]; then
