@@ -97,7 +97,7 @@ npm run build
 
 가상 판정에서는 본인 메모의 GET/PUT과 등록된 강사의 공지 PUT이 허용되고, 다른 주체·반·프로젝트·기기·등록되지 않은 자원, 일반 학생의 공지 수정, `export` 같은 경로는 거부되어야 합니다. API 테스트에서는 A가 자기 메모를 읽고 수정·삭제할 수 있고, B가 A의 메모를 요청하면 404가 반환되어야 합니다. 공지 API는 저장된 강사 ID를 다시 비교해야 합니다. 이들은 로컬·모의 테스트이며 운영 심판 판정을 대신하지 않습니다.
 
-GitHub Actions `.github/workflows/stage8-verify.yml`은 PR에서 회귀 테스트와 로컬 빌드를 실행하고, main 배포가 해당 커밋으로 완료된 뒤 실제 HTTP 관찰 결과를 `npm run bundle`로 묶어 제출 JSON 아티팩트로 보관합니다. `bundle-notes.json`은 실행 중 생성하는 임시 파일이며 저장소에 커밋하지 않습니다.
+저장소의 기존 8단계 GitHub Actions 검증은 PR에서 회귀 테스트와 로컬 빌드를 실행하고, main 배포가 해당 커밋으로 완료된 뒤 실제 HTTP 관찰 결과를 `npm run bundle`로 묶어 제출 JSON 아티팩트로 보관합니다. `bundle-notes.json`은 실행 중 생성하는 임시 파일이며 저장소에 커밋하지 않습니다.
 
 ## 확인 및 제출
 
