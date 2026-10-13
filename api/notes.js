@@ -40,14 +40,17 @@ export function createCollectionHandler(authenticate = authenticateStudent) {
     try {
       const { data, error } = await context.supabase
         .from('training_notes')
-        .select('id,title,content')
+        .select('id,title,content,owner_id')
         .eq('owner_id', context.identity.userId)
         .order('created_at', { ascending: true })
         .limit(100);
       if (error || !Array.isArray(data)) {
         return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
       }
-      return response.status(200).json({ notes: data.map(present) });
+      // Keep the application-side check as a second boundary if an unexpected
+      // query result contains a row from another owner.
+      const ownedNotes = data.filter(note => note?.owner_id === context.identity.userId);
+      return response.status(200).json({ notes: ownedNotes.map(present) });
     } catch {
       return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
     }
