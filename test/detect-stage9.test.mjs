@@ -171,6 +171,33 @@ test('accepts a separate unusual-network log without method or decision and does
     ['at', 'decision', 'deviceId', 'method', 'network', 'source', 'subjectId']);
 });
 
+test('resolves legacy GET records to one nearby verified virtual device only when unambiguous', () => {
+  const legacyReads = Array.from({ length: 121 }, (_, index) => ({
+    at: new Date(START + index * 2_000).toISOString().replace('.000Z', 'Z'),
+    method: 'GET',
+    identity: { sub: 'learner_fixture' },
+  }));
+  const networkSignal = {
+    at: new Date(START + 1).toISOString(),
+    identity: { sub: 'learner_fixture' },
+    deviceId: 'virtual-device-a',
+    network: 'new_network',
+    kind: 'network_anomaly',
+  };
+  assert.deepEqual(detect([...legacyReads, networkSignal]), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'virtual-device-a',
+  });
+  const secondDevice = {
+    ...networkSignal,
+    deviceId: 'virtual-device-b',
+    at: new Date(START + 2).toISOString(),
+  };
+  assert.deepEqual(detect([...legacyReads, networkSignal, secondDevice]), { action: 'observe' });
+});
+
 test('combines legacy GET logs without network metadata with a separate unusual-network event', () => {
   const legacyReads = Array.from({ length: 121 }, (_, index) => ({
     at: new Date(START + index * 2_000).toISOString(),

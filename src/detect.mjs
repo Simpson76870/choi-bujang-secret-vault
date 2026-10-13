@@ -99,8 +99,10 @@ function readOneDetectionEvent(event) {
   const decision = normalizeDecision(rawDecision);
   const network = normalizeNetwork(event);
 
+  const hasDeviceId = deviceId !== undefined && deviceId !== null;
+  const validDeviceId = typeof deviceId === 'string' && DEVICE_ID.test(deviceId);
   if (typeof subjectId !== 'string' || !SUBJECT_ID.test(subjectId)
-      || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)
+      || (hasDeviceId && !validDeviceId)
       || method === undefined || decision === undefined
       || (method === null && network !== 'unusual')) return null;
 
@@ -109,7 +111,7 @@ function readOneDetectionEvent(event) {
   return Object.freeze({
     at: new Date(time).toISOString(),
     subjectId,
-    deviceId,
+    deviceId: validDeviceId ? deviceId : null,
     method,
     decision,
     network,
@@ -159,12 +161,24 @@ export function detectDeviceAnomaly(events) {
   const parsed = readDetectionEvents(events);
   const groups = new Map();
 
-  // Read volume and network anomaly are separate signals: count only allowed
-  // GETs, but retain any valid unusual-network event for the same verified
-  // subject/device pair so a separate network log can complete the pattern.
-  for (const event of parsed) {
-    // The original event contract had no decision field; for that legacy shape,
-    // a GET is treated as an observed successful read. Explicit denials never count.
+  // If a GET log lacks device metadata, associate it only when exactly one
+  // validated device for the same pseudonymous subject occurs in its 10-minute
+  // neighborhood. Never guess when multiple devices are possible.
+  const resolved = parsed.map((event) => {
+    if (event.deviceId) return event;
+    const at = Date.parse(event.at);
+    const nearbyDevices = new Set(parsed
+      .filter(other => other.subjectId === event.subjectId
+        && typeof other.deviceId === 'string'
+        && Math.abs(Date.parse(other.at) - at) < WINDOW_MS)
+      .map(other => other.deviceId));
+    if (nearbyDevices.size !== 1) return null;
+    return { ...event, deviceId: nearbyDevices.values().next().value };
+  }).filter(Boolean);
+
+  // Read volume and network anomaly are separate signals. Network-only logs
+  // are retained as evidence but never increment the GET counter.
+  for (const event of resolved) {
     const isAllowedRead = event.method === 'GET'
       && (event.decision === null || event.decision === 'allow');
     const isUnusualNetwork = event.network === 'unusual';
