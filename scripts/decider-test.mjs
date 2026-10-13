@@ -38,6 +38,10 @@ export async function checkDecider({ decide, ruleIds }) {
     subjectId: 'instructor_fixture', deviceId: 'bbbbbbbbbbbbbbbb',
     service: 'announcements', method: 'PUT', path: '/announcements/demo',
     route: 'PUT /announcements/:id' };
+  const instructorNoticeEdit = { ...normal, requestId: randomUUID(),
+    subjectId: 'instructor_fixture', deviceId: 'bbbbbbbbbbbbbbbb',
+    service: 'notices', method: 'PUT', path: '/notices/demo',
+    route: 'PUT /notices/:id' };
   const crossedResourcePath = { ...normal, requestId: randomUUID(),
     service: 'notes', method: 'PUT', path: '/announcements/demo', route: 'PUT /notes/:id' };
   const checks = [
@@ -68,6 +72,8 @@ export async function checkDecider({ decide, ruleIds }) {
     { name: '일반 학생의 공지 수정 거부', request: studentAnnouncementEdit, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
     { name: '등록된 강사의 공지 자원 수정 허용', request: instructorAnnouncementEdit,
+      decision: 'allow', reasonCode: 'approved' },
+    { name: '등록된 강사의 notices 별칭 수정 허용', request: instructorNoticeEdit,
       decision: 'allow', reasonCode: 'approved' },
     { name: '메모 서비스로 공지 경로에 접근하는 요청 거부', request: crossedResourcePath,
       decision: 'deny', reasonCode: 'resource_not_allowed' },
