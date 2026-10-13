@@ -32,6 +32,14 @@ export async function checkDecider({ decide, ruleIds }) {
     querySha256: createHash('sha256').update('id=demo').digest('hex') };
   const noticeEdit = { ...normal, requestId: randomUUID(), service: 'notices',
     method: 'PUT', path: '/notices/demo', route: 'PUT /notices/:id' };
+  const studentAnnouncementEdit = { ...normal, requestId: randomUUID(), service: 'announcements',
+    method: 'PUT', path: '/announcements/demo', route: 'PUT /announcements/:id' };
+  const instructorAnnouncementEdit = { ...normal, requestId: randomUUID(),
+    subjectId: 'instructor_fixture', deviceId: 'bbbbbbbbbbbbbbbb',
+    service: 'announcements', method: 'PUT', path: '/announcements/demo',
+    route: 'PUT /announcements/:id' };
+  const crossedResourcePath = { ...normal, requestId: randomUUID(),
+    service: 'notes', method: 'PUT', path: '/announcements/demo', route: 'PUT /notes/:id' };
   const checks = [
     { name: '제공된 본인 메모 /notes/demo 읽기 허용', request: normal, decision: 'allow', reasonCode: 'approved' },
     { name: '제공된 본인 메모 수정 허용', request: { ...normal, requestId: randomUUID(),
@@ -55,8 +63,14 @@ export async function checkDecider({ decide, ruleIds }) {
     { name: '등록되지 않은 다른 메모 ID 거부', request: otherMemo, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
     { name: '메모 목록 기본 거부', request: list, decision: 'deny', reasonCode: 'resource_not_allowed' },
-    { name: '일반 학생의 강사 공지 수정 거부', request: noticeEdit, decision: 'deny',
+    { name: '일반 학생의 강사 알림 수정 거부', request: noticeEdit, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
+    { name: '일반 학생의 공지 수정 거부', request: studentAnnouncementEdit, decision: 'deny',
+      reasonCode: 'resource_not_allowed' },
+    { name: '등록된 강사의 공지 자원 수정 허용', request: instructorAnnouncementEdit,
+      decision: 'allow', reasonCode: 'approved' },
+    { name: '메모 서비스로 공지 경로에 접근하는 요청 거부', request: crossedResourcePath,
+      decision: 'deny', reasonCode: 'resource_not_allowed' },
     { name: 'export 같은 추가 경로 거부', request: exportPath, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
     { name: '쿼리로 기능/자원 선택하는 요청 거부', request: queryChoice, decision: 'deny',
