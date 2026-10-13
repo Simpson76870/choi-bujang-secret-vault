@@ -37,23 +37,34 @@ jobs:
         shell: bash
         run: |
           node --input-type=module <<'NODE'
-          const url = 'https://aleph-omega.vercel.app/defense';
-          const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+          const base = 'https://aleph-omega.vercel.app';
+          const path = '/defense';
+          const response = await fetch(base + path, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
           const html = await response.text();
           const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] ?? null;
-          const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map(m => m[0]).slice(0, 10);
           const scripts = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]).slice(0, 20);
-          const links = [...html.matchAll(/<link[^>]+href=["']([^"']+)["']/gi)].map(m => m[1]).filter(x => /javascript|\.js([?#]|$)|manifest/i.test(x)).slice(0, 20);
+          const assets = [];
+          for (const script of scripts) {
+            const assetResponse = await fetch(new URL(script, base + path), { signal: AbortSignal.timeout(15000) });
+            const js = await assetResponse.text();
+            assets.push({
+              url: new URL(script, base + path).href,
+              status: assetResponse.status,
+              length: js.length,
+              relevantLines: js.split(/\r?\n/).filter(line =>
+                /fetch\(|\/api\/|supabase|auth|session|judge|submit|score|mission|campaign|localStorage|Authorization|Bearer|cookie/i.test(line)
+              ).map(line => line.slice(0, 1000)).slice(0, 80),
+              excerpt: js.slice(0, 5000)
+            });
+          }
           console.log(JSON.stringify({
-            requestedUrl: url,
+            requestedUrl: base + path,
             finalUrl: response.url,
             status: response.status,
             contentType: response.headers.get('content-type'),
             title,
-            forms,
             scripts,
-            links,
-            excerpt: html.slice(0, 3000)
+            assets,
           }, null, 2));
           NODE
 
