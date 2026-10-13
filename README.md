@@ -5,7 +5,7 @@
 ## 9단계 저장점: 도플갱어를 찾고 권한을 거둡니다
 
 - 기존 로그인, 본인 메모 CRUD, 6·7단계 기기/추가 확인, 8단계 자원 구역 검사는 보존합니다.
-- 기존 `detect(events)`는 `docs/DETECT_EVENTS.md`의 원래 세 필드 계약을 유지합니다. 새 `readDetectionEvents(events)`는 별도 로컬 가상 사건의 타임스탬프, 가명 주체 ID, 16자리 기기 ID, 메서드, 판정, 네트워크, 출처만 복사합니다. 본문, 토큰, 실명, 헤더와 임의 필드는 결과에 포함하지 않습니다.
+- 공식 진입점 `detect(events)`는 `readDetectionEvents(events)`로 검증된 가상 사건만 사용합니다. 레거시 `{at, method, identity.sub}` 사건에는 기기·네트워크 근거가 없어 회수 제안하지 않습니다. 새 파서는 타임스탬프, 가명 주체 ID, 16자리 기기 ID, 메서드, 판정, 네트워크, 허용된 출처만 복사하며 본문·토큰·실명·헤더·임의 필드는 결과에 포함하지 않습니다.
 - `detectDeviceAnomaly(events)`는 **같은 가명 주체·같은 기기**의 허용된 GET이 연속된 10분 창에서 120건을 초과하고 그 창 안에 `network: 'unusual'`이 하나 이상 있을 때만 의심을 표시합니다. 지역 하나만으로 탐지하지 않고, 다른 사용자·다른 기기·쓰기/거부 요청·정상 네트워크·10분 창 밖 사건을 합산하지 않습니다.
 - `detectDeviceEvents(events)`는 의심 사건에 `{ action: 'propose_revocation', reasonCode: 'burst_read', subject, deviceId }`라는 별도 제안을 내고, 그 밖에는 `{ action: 'observe' }`를 반환합니다. 제안은 검증된 가상 기기 한 개만 대상으로 하며 `decide(request)`의 다섯 필드 응답을 변경하지 않습니다.
 - 이 입력은 명시적으로 `source: 'local_virtual_fixture'`인 로컬 가상 사건입니다. 실제 엔진의 기본 세 필드 사건에는 기기·네트워크가 없으므로, 운영 사건 전달·실제 권한 회수·첫 의심 요청부터의 경과 시간은 미실행이며 심판/운영 엔진 확인 대상입니다. 회수 API 호출이나 기기 권한 변경은 구현하지 않았습니다.

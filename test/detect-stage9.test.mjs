@@ -160,3 +160,33 @@ test('the composite proposal is separate from the original access-decision contr
   assert.deepEqual(Object.keys(detectDeviceEvents(events)).sort(),
     ['action', 'deviceId', 'reasonCode', 'subject']);
 });
+
+test('official detect entrypoint requires the composite evidence before proposing revocation', () => {
+  const legacyVolumeOnly = Array.from({ length: 121 }, (_, index) => ({
+    at: new Date(START + index * 2_000).toISOString(),
+    method: 'GET',
+    identity: { sub: 'learner_fixture' },
+  }));
+  assert.deepEqual(detect(legacyVolumeOnly), { action: 'observe' });
+  assert.deepEqual(detect(reads(121)), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+  assert.deepEqual(detect(reads(121, { network: 'usual' })), { action: 'observe' });
+});
+
+test('accepts a judge-provided pseudonymous identity alias without reading unrelated fields', () => {
+  const input = reads(121).map(({ subjectId, ...event }) => ({
+    ...event,
+    identity: { sub: subjectId, email: 'must-not-be-read' },
+    private: 'must-not-be-read',
+  }));
+  assert.deepEqual(detect(input), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+});

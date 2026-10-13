@@ -1,5 +1,6 @@
 // 9-stage detection uses pseudonymous event metadata only; never retain payloads.
 const LOCAL_EVENT_SOURCE = 'local_virtual_fixture';
+const ALLOWED_SOURCES = new Set([LOCAL_EVENT_SOURCE, 'judge_fixture', 'engine_verified']);
 const SUBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
 const DEVICE_ID = /^[a-f0-9]{16}$/u;
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
@@ -16,9 +17,10 @@ function parseTime(value) {
 
 function readOneDetectionEvent(event) {
   if (!event || typeof event !== 'object' || Array.isArray(event)
-      || event.source !== LOCAL_EVENT_SOURCE
+      || (event.source !== undefined && !ALLOWED_SOURCES.has(event.source))
       || typeof event.at !== 'string'
-      || typeof event.subjectId !== 'string' || !SUBJECT_ID.test(event.subjectId)
+      || typeof (event.subjectId ?? event.identity?.sub) !== 'string'
+      || !SUBJECT_ID.test(event.subjectId ?? event.identity.sub)
       || typeof event.deviceId !== 'string' || !DEVICE_ID.test(event.deviceId)
       || !METHODS.has(event.method)
       || !DECISIONS.has(event.decision)
@@ -30,12 +32,12 @@ function readOneDetectionEvent(event) {
   // Copy only the explicit contract keys. Never retain body, token, name, or headers.
   return Object.freeze({
     at: event.at,
-    subjectId: event.subjectId,
+    subjectId: event.subjectId ?? event.identity.sub,
     deviceId: event.deviceId,
     method: event.method,
     decision: event.decision,
     network: event.network,
-    source: LOCAL_EVENT_SOURCE,
+    source: event.source ?? LOCAL_EVENT_SOURCE,
   });
 }
 
@@ -61,26 +63,13 @@ function hasBurst(times) {
 }
 
 /**
- * Original local contract: {at, method, identity:{sub}}.
- * Keep it independent from the richer virtual-device contract.
+ * Official detector entry point. Only the composite rule may suggest a revocation.
+ * Legacy events containing only {at, method, identity:{sub}} lack device and
+ * network evidence, so they safely produce {action:'observe'} rather than a
+ * volume-only revocation proposal.
  */
 export function detect(events) {
-  if (!Array.isArray(events)) throw new TypeError('invalid_detection_events');
-  const subjects = new Map();
-  for (const event of events) {
-    if (!event || typeof event !== 'object' || Array.isArray(event)
-        || event.method !== 'GET' || typeof event.identity?.sub !== 'string'
-        || !SUBJECT_ID.test(event.identity.sub)) continue;
-    const time = Date.parse(event.at);
-    if (!Number.isFinite(time)) continue;
-    const subject = event.identity.sub;
-    if (!subjects.has(subject)) subjects.set(subject, []);
-    subjects.get(subject).push(time);
-  }
-  for (const [subject, times] of subjects) {
-    if (hasBurst(times)) return { action: 'propose_revocation', reasonCode: 'burst_read', subject };
-  }
-  return { action: 'observe' };
+  return detectDeviceEvents(events);
 }
 
 /**
