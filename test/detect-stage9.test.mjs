@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { detectDeviceAnomaly, readDetectionEvents } from '../src/detect.mjs';
+import { detect, detectDeviceAnomaly, detectDeviceEvents, readDetectionEvents } from '../src/detect.mjs';
 
 const valid = {
   at: '2026-10-01T00:00:00.000Z',
@@ -119,4 +119,44 @@ test('does not mutate input or return content, tokens, names, or header values',
   assert.equal(Object.hasOwn(output, 'token'), false);
   assert.equal(Object.hasOwn(output, 'name'), false);
   assert.deepEqual(input, before);
+});
+
+test('proposes revocation for exactly the detected device and preserves observe for normal events', () => {
+  assert.deepEqual(detectDeviceEvents(reads(121)), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+  assert.deepEqual(detectDeviceEvents(reads(120)), { action: 'observe' });
+  assert.deepEqual(detectDeviceEvents(reads(121, { network: 'usual' })), { action: 'observe' });
+});
+
+test('a batch with multiple candidates returns a proposal for only one confirmed device', () => {
+  const events = [
+    ...reads(121, { subjectId: 'learner_first', deviceId: 'aaaaaaaaaaaaaaaa' }),
+    ...reads(121, { subjectId: 'learner_second', deviceId: 'bbbbbbbbbbbbbbbb', start: START + 1 }),
+  ];
+  const result = detectDeviceEvents(events);
+  assert.equal(result.action, 'propose_revocation');
+  assert.equal(result.reasonCode, 'burst_read');
+  assert.equal(typeof result.subject, 'string');
+  assert.ok(['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'].includes(result.deviceId));
+  assert.equal(Object.hasOwn(result, 'targets'), false);
+  assert.equal(Object.hasOwn(result, 'devices'), false);
+});
+
+test('the composite proposal is separate from the original access-decision contract', () => {
+  const events = reads(121);
+  const snapshot = structuredClone(events);
+  assert.deepEqual(detectDeviceEvents(events), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+  assert.deepEqual(events, snapshot);
+  assert.deepEqual(detect([]), { action: 'observe' });
+  assert.deepEqual(Object.keys(detectDeviceEvents(events)).sort(),
+    ['action', 'deviceId', 'reasonCode', 'subject']);
 });
