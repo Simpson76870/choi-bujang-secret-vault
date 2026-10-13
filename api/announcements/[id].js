@@ -11,7 +11,7 @@ function bodyObject(request) {
 function announcementId(request) {
   try {
     const pathname = new URL(request.url, 'https://invalid.local').pathname;
-    const match = /^(?:\/api)?\/announcements\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu.exec(pathname);
+    const match = /^(?:\/api)?\/(?:announcements|notices)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu.exec(pathname);
     return match?.[1] ?? '';
   } catch { return ''; }
 }
