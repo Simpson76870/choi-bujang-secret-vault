@@ -76,7 +76,7 @@ npm run decider:test
 정상 가상 요청은 `allow`, 복합 이상 접속과 출처 불명 신호는 `step_up · step_up_required`, 새 로그인 시각이 검증된 복합 사건은 재판정에서 `allow`가 나와야 합니다. 지역만 다른 정상 조합은 허용되어야 합니다. 이 시험은 운영 심판 판정이나 실제 자료 차단의 증거가 아닙니다.
 
 
-## 8단계: 자료마다 갈 수 있는 구역을 나눕니다
+## 8단계 저장점: 자료마다 갈 수 있는 구역을 나눕니다
 
 - 판정기에서 자료별 자원 ID를 분리합니다. 본인 메모 fixture는 `notes:demo`이며 `class_fixture` / `project_fixture` / `learner_fixture` / 기기 `aaaaaaaaaaaaaaaa` 조합에 GET/PUT만 허용합니다. 강사 공지 fixture는 별도 ID `announcements:demo`이며 `instructor_fixture`와 등록 기기 `bbbbbbbbbbbbbbbb` 조합에 PUT만 허용합니다.
 - 판정은 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 브라우저가 보낸 사용자 ID나 역할을 사용하지 않습니다. 다른 주체·반·프로젝트·기기·서비스·자원 ID, 쿼리 선택, `export` 같은 추가 경로는 기본 거부합니다.
