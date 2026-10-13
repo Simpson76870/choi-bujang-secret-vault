@@ -87,8 +87,8 @@ export function detect(events) {
  * Stage 9 composite rule, separated from the original access-decision contract.
  * A single subject/device pair must have >120 allowed GETs inside a rolling
  * 10-minute window and at least one unusual-network event within that same window.
- * This phase reports a detection candidate only; a later stage maps it to a
- * revocation proposal without calling an API or modifying device registration.
+ * This helper reports a candidate; detectDeviceEvents maps it to a separate
+ * proposal without calling an API or modifying device registration.
  */
 export function detectDeviceAnomaly(events) {
   const parsed = readDetectionEvents(events);
