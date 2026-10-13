@@ -1,4 +1,6 @@
 // Use only the engine-verified contract and explicitly provisioned resources.
+// API IDs are mapped to the engine's canonical resource paths; the rest are default-deny.
+const PROVISIONED_NOTE_API_ID = '10000000-0000-4000-8000-000000000099';
 const starterResources = Object.freeze([
   Object.freeze({
     classId: 'class_fixture',
@@ -9,9 +11,18 @@ const starterResources = Object.freeze([
     service: 'notes',
     path: '/notes/demo',
     resourceId: 'notes:demo',
+    apiId: PROVISIONED_NOTE_API_ID,
     permissions: Object.freeze(['GET', 'PUT']),
   }),
 ]);
+
+// Shared by the real Vercel API handlers so they cannot bypass the resource-zone policy.
+export function isProvisionedNoteRequest(method, id) {
+  return starterResources.some(entry => entry.service === 'notes'
+    && entry.apiId === id && Array.isArray(entry.permissions)
+    && entry.permissions.includes(method));
+}
+
 const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const RESOURCE_SCOPE_RULE = 'resource_scope';
 export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', RESOURCE_SCOPE_RULE]);
