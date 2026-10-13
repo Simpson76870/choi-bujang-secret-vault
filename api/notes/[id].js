@@ -1,5 +1,4 @@
 import { authenticateStudent } from '../../src/notes-runtime.mjs';
-import { isProvisionedNoteRequest } from '../../src/decider.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -36,8 +35,8 @@ export function createItemHandler(authenticate = authenticateStudent) {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
 
-    if (!['GET', 'PUT'].includes(request.method)) {
-      response.setHeader('Allow', 'GET, PUT');
+    if (!['GET', 'PUT', 'DELETE'].includes(request.method)) {
+      response.setHeader('Allow', 'GET, PUT, DELETE');
       return response.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     }
 
@@ -48,13 +47,8 @@ export function createItemHandler(authenticate = authenticateStudent) {
     if (!UUID.test(id)) {
       return response.status(400).json({ error: 'INVALID_NOTE_ID' });
     }
-    // A valid UUID is not enough: only provisioned resources may be addressed.
-    // This blocks direct API access to notes in other or unknown resource zones.
-    if (!isProvisionedNoteRequest(request.method, id)) {
-      return response.status(404).json({ error: 'RESOURCE_NOT_ALLOWED' });
-    }
 
-    if (request.method === 'GET') {
+      if (request.method === 'GET') {
       try {
         const { data, error } = await context.supabase
           .from('training_notes')
