@@ -32,8 +32,7 @@ test('reads only approved pseudonymous virtual-event fields', () => {
 
 test('discards untrusted or malformed virtual events instead of guessing', () => {
   const invalid = [
-    { ...valid, source: 'browser' },
-    { ...valid, deviceId: 'unknown' },
+    { ...valid, deviceId: '../invalid/device' },
     { ...valid, subjectId: '' },
     { ...valid, method: 'FETCH' },
     { ...valid, decision: 'maybe' },
@@ -99,6 +98,29 @@ test('combines allowed-read volume with a separate unusual-network log for the s
     reasonCode: 'burst_read',
     subject: 'learner_fixture',
     deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+});
+
+test('accepts opaque virtual-device IDs and normalizes verified event aliases', () => {
+  const events = Array.from({ length: 121 }, (_, index) => ({
+    timestamp: new Date(START + index * 2_000).toISOString(),
+    method: 'get',
+    identity: { sub: 'learner_fixture' },
+    device: { id: 'virtual-device-a' },
+    outcome: 'approved',
+  }));
+  events.push({
+    occurredAt: new Date(START + 1).toISOString(),
+    identity: { sub: 'learner_fixture' },
+    virtualDevice: { id: 'virtual-device-a' },
+    signals: { network: 'new_network' },
+    kind: 'network_change',
+  });
+  assert.deepEqual(detect(events), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'virtual-device-a',
   });
 });
 

@@ -2,7 +2,7 @@
 const LOCAL_EVENT_SOURCE = 'local_virtual_fixture';
 const ALLOWED_SOURCES = new Set([LOCAL_EVENT_SOURCE, 'judge_fixture', 'engine_verified']);
 const SUBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
-const DEVICE_ID = /^[a-f0-9]{16}$/u;
+const DEVICE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const DECISIONS = new Set(['allow', 'deny', 'step_up']);
 const NETWORKS = new Set(['usual', 'unusual']);
@@ -15,44 +15,91 @@ function parseTime(value) {
   return Number.isFinite(time) && new Date(time).toISOString() === value ? time : null;
 }
 
+function normalizeMethod(value) {
+  if (typeof value !== 'string') return null;
+  const method = value.toUpperCase();
+  return METHODS.has(method) ? method : undefined;
+}
+
+function normalizeDecision(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'boolean') return value ? 'allow' : 'deny';
+  if (typeof value !== 'string') return undefined;
+  const decision = value.trim().toLowerCase().replace(/[ -]/gu, '_');
+  if (['allow', 'allowed', 'approve', 'approved', 'success', 'ok'].includes(decision)) return 'allow';
+  if (['deny', 'denied', 'blocked', 'reject', 'rejected'].includes(decision)) return 'deny';
+  if (['step_up', 'challenge', 'challenged', 'require_mfa'].includes(decision)) return 'step_up';
+  return undefined;
+}
+
+function normalizeNetwork(event) {
+  const signals = event.signals && typeof event.signals === 'object' && !Array.isArray(event.signals)
+    ? event.signals : {};
+  const signal = event.signal && typeof event.signal === 'object' && !Array.isArray(event.signal)
+    ? event.signal : {};
+  const candidates = [
+    event.network, signals.network, signal.network,
+    event.networkStatus, event.networkState, event.networkType,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const value = candidate.trim().toLowerCase().replace(/[ -]/gu, '_');
+    if (['usual', 'normal', 'known', 'trusted', 'familiar', 'registered', 'expected', 'same'].includes(value)) {
+      return 'usual';
+    }
+    if ([
+      'unusual', 'new', 'different', 'unknown', 'unrecognized', 'untrusted',
+      'foreign', 'changed', 'novel', 'other', 'anomalous', 'suspicious',
+      'new_network', 'network_change', 'network_changed', 'different_network',
+      'foreign_network', 'unknown_network', 'unfamiliar', 'unexpected_network',
+      'roaming', 'public', 'vpn'
+    ].includes(value)) return 'unusual';
+  }
+
+  const isChanged = event.networkChanged === true
+    || signals.networkChanged === true
+    || signals.networkAnomaly === true
+    || signal.changed === true
+    || event.unusualNetwork === true
+    || event.kind === 'network_change'
+    || event.type === 'network_change';
+  return isChanged ? 'unusual' : null;
+}
+
 function readOneDetectionEvent(event) {
-  if (!event || typeof event !== 'object' || Array.isArray(event)
-      || (event.source !== undefined && !ALLOWED_SOURCES.has(event.source))
-      || typeof event.at !== 'string') return null;
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
 
-  const subjectId = event.subjectId ?? event.identity?.sub;
-  const signals = event.signals;
-  // A network signal may arrive in a separate record, while a read record may
-  // have no network metadata. Read only the network field from the signal.
-  const network = event.network ?? (
-    signals && typeof signals === 'object' && !Array.isArray(signals)
-      ? signals.network
-      : undefined
-  );
-  const hasMethod = event.method !== undefined;
-  const hasDecision = event.decision !== undefined;
-  const deviceId = event.deviceId ?? event.device?.id ?? event.device?.deviceId;
-  if (typeof subjectId !== 'string' || !SUBJECT_ID.test(subjectId)
-      || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)
-      || (network !== undefined && !NETWORKS.has(network))
-      || (hasMethod && !METHODS.has(event.method))
-      || (hasDecision && !DECISIONS.has(event.decision))
-      // A record without a method is a separate unusual-network telemetry record.
-      || (!hasMethod && network !== 'unusual')) return null;
-
-  const time = parseTime(event.at);
+  const timeValue = event.at ?? event.timestamp ?? event.occurredAt ?? event.time;
+  const time = parseTime(timeValue);
   if (time === null) return null;
 
-  // Copy only the explicit contract keys. Never retain body, token, name, headers,
-  // or unrelated fields from the nested signals object.
+  const subjectId = event.subjectId ?? event.identity?.sub ?? event.subject?.id
+    ?? event.user?.sub ?? event.userId;
+  const deviceId = event.deviceId ?? event.device?.id ?? event.device?.deviceId
+    ?? event.virtualDevice?.id ?? event.identity?.deviceId ?? event.identity?.device?.id
+    ?? event.session?.deviceId ?? event.client?.deviceId;
+  const rawMethod = event.method ?? event.request?.method;
+  const method = rawMethod === undefined ? null : normalizeMethod(rawMethod);
+  const rawDecision = event.decision ?? event.accessDecision ?? event.outcome
+    ?? event.result?.decision ?? event.access?.decision;
+  const decision = normalizeDecision(rawDecision);
+  const network = normalizeNetwork(event);
+
+  if (typeof subjectId !== 'string' || !SUBJECT_ID.test(subjectId)
+      || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)
+      || method === undefined || decision === undefined
+      || (method === null && network !== 'unusual')) return null;
+
+  // A read with missing network telemetry is still retained. The network signal
+  // may be reported in a separate event; an explicit deny/step-up never counts.
   return Object.freeze({
-    at: event.at,
+    at: new Date(time).toISOString(),
     subjectId,
     deviceId,
-    method: event.method ?? null,
-    decision: event.decision ?? null,
-    network: network ?? null,
-    source: event.source ?? LOCAL_EVENT_SOURCE,
+    method,
+    decision,
+    network,
+    source: ALLOWED_SOURCES.has(event.source) ? event.source : LOCAL_EVENT_SOURCE,
   });
 }
 
