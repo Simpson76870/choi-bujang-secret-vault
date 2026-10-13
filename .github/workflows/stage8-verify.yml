@@ -38,7 +38,7 @@ jobs:
           npm run decider:test
           npm run test:stage8
           npm run test:package
-          npm run build
+          npm run build -- --local
 
       - name: Wait for this commit to reach production
         if: github.event_name == 'push'
