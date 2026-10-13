@@ -26,6 +26,8 @@ export async function checkDecider({ decide, ruleIds }) {
   const otherProject = { ...normal, requestId: randomUUID(), projectId: 'project_other' };
   const otherDevice = { ...normal, requestId: randomUUID(), deviceId: 'bbbbbbbbbbbbbbbb' };
   const otherMemo = { ...normal, requestId: randomUUID(), path: '/notes/other-demo' };
+  const otherMemoUuid = { ...normal, requestId: randomUUID(),
+    path: '/notes/10000000-0000-4000-8000-000000000123' };
   const list = { ...normal, requestId: randomUUID(), path: '/notes', route: 'GET /notes' };
   const exportPath = { ...normal, requestId: randomUUID(), path: '/notes/demo/export' };
   const queryChoice = { ...normal, requestId: randomUUID(), queryLength: 4,
@@ -72,17 +74,19 @@ export async function checkDecider({ decide, ruleIds }) {
     { name: '다른 반의 메모 거부', request: otherClass, decision: 'deny', reasonCode: 'resource_not_allowed' },
     { name: '다른 프로젝트의 메모 거부', request: otherProject, decision: 'deny', reasonCode: 'resource_not_allowed' },
     { name: '다른 기기의 메모 거부', request: otherDevice, decision: 'deny', reasonCode: 'resource_not_allowed' },
-    { name: '등록되지 않은 다른 메모 ID 거부', request: otherMemo, decision: 'deny',
+    { name: '등록되지 않은 메모 경로 거부', request: otherMemo, decision: 'deny',
+      reasonCode: 'resource_not_allowed' },
+    { name: '유효한 UUID라도 다른 메모 ID면 거부', request: otherMemoUuid, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
     { name: '메모 목록 기본 거부', request: list, decision: 'deny', reasonCode: 'resource_not_allowed' },
     { name: '일반 학생의 강사 알림 수정 거부', request: noticeEdit, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
     { name: '일반 학생의 공지 수정 거부', request: studentAnnouncementEdit, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
-    { name: '등록된 강사의 공지 자원 수정 허용', request: instructorAnnouncementEdit,
-      decision: 'allow', reasonCode: 'approved' },
-    { name: '등록된 강사의 notices 별칭 수정 허용', request: instructorNoticeEdit,
-      decision: 'allow', reasonCode: 'approved' },
+    { name: '계약에 강사 권한 증명이 없으면 공지 수정도 거부', request: instructorAnnouncementEdit,
+      decision: 'deny', reasonCode: 'resource_not_allowed' },
+    { name: '계약에 강사 권한 증명이 없으면 notices 수정도 거부', request: instructorNoticeEdit,
+      decision: 'deny', reasonCode: 'resource_not_allowed' },
     { name: '메모 서비스로 공지 경로에 접근하는 요청 거부', request: crossedResourcePath,
       decision: 'deny', reasonCode: 'resource_not_allowed' },
     { name: 'export 같은 추가 경로 거부', request: exportPath, decision: 'deny',
