@@ -33,6 +33,26 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Probe public judge page without credentials
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const url = 'https://aleph-omega.vercel.app/defense';
+          const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+          const html = await response.text();
+          console.log(JSON.stringify({
+            requestedUrl: url,
+            finalUrl: response.url,
+            status: response.status,
+            contentType: response.headers.get('content-type'),
+            title: html.match(/<title[^>]*>([^<]*)<\\/title>/iu)?.[1] ?? null,
+            forms: [...html.matchAll(/<form\\b[^>]*>/giu)].map(m => m[0]).slice(0, 10),
+            scripts: [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/giu)].map(m => m[1]).slice(0, 20),
+            links: [...html.matchAll(/<link[^>]+href=["']([^"']+)["']/giu)].map(m => m[1]).filter(x => /javascript|\.js([?#]|$)|manifest/i.test(x)).slice(0, 20),
+            excerpt: html.slice(0, 3000)
+          }, null, 2));
+          NODE
+
       - name: Install locked dependencies
         run: npm ci
 
