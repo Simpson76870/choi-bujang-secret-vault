@@ -52,18 +52,21 @@ function resolveResource(request) {
       || request.path.includes('?') || request.path.includes('#')
       || request.queryLength !== 0 || request.querySha256 !== EMPTY_SHA256
       || typeof request.route !== 'string') return null;
-  if (request.path === '/notes'
+  // Accept either the engine's service-local path or the public /api path.
+  // Only the exact prefix is removed; query strings and extra segments remain forbidden.
+  const path = request.path.startsWith('/api/') ? request.path.slice(4) : request.path;
+  if (path === '/notes'
       && request.route === request.method + ' /notes'
       && ['GET', 'POST'].includes(request.method)) {
     return { resourceId: RESOURCE_IDS.notesCollection, zone: 'notes', isCollection: true };
   }
-  const noteMatch = /^\/notes\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu.exec(request.path);
+  const noteMatch = /^\/notes\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu.exec(path);
   if (noteMatch && UUID.test(noteMatch[1])
       && request.route === request.method + ' /notes/:id'
       && ['GET', 'PUT', 'DELETE'].includes(request.method)) {
     return { resourceId: RESOURCE_IDS.note + ':' + noteMatch[1].toLowerCase(), zone: 'note' };
   }
-  const announcementMatch = /^\/announcements\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu.exec(request.path);
+  const announcementMatch = /^\/announcements\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu.exec(path);
   if (announcementMatch && UUID.test(announcementMatch[1])
       && request.route === request.method + ' /announcements/:id'
       && ['GET', 'PUT'].includes(request.method)) {
@@ -95,8 +98,15 @@ export async function decide(request) {
   const knownSignalSource = isFixtureSignalSet(signals);
   const knownRecentEvents = isValidRecentEvents(recentEvents);
   const validStepUp = isValidStepUp(request.stepUp);
-  const risk = knownSignalSource && knownRecentEvents && isCompositeRisk(signals, recentEvents);
-  const requiresStepUp = !knownSignalSource || !knownRecentEvents || !validStepUp || risk;
+  // "none" explicitly means that trustworthy location/network signals are unavailable;
+  // do not fabricate normal values, but do not block every ordinary resource read for that reason alone.
+  const source = signals && typeof signals === 'object' ? signals.source : undefined;
+  const explicitUntrustedSource = source !== 'none' && !knownSignalSource;
+  const risk = knownRecentEvents && (
+    (knownSignalSource && isCompositeRisk(signals, recentEvents))
+    || recentEvents.some(event => event.kind === 'risk_signal' && event.ageSeconds <= 300 && event.count >= 10)
+  );
+  const requiresStepUp = explicitUntrustedSource || !knownRecentEvents || !validStepUp || risk;
   const reauthenticated = isFreshVerifiedLogin(request.stepUp);
   if (requiresStepUp && !reauthenticated) {
     return { schema: 'aleph.decision.v1', requestId: request.requestId,

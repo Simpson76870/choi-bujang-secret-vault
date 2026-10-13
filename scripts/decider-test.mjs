@@ -29,10 +29,13 @@ export async function checkDecider({ decide, ruleIds }) {
     { name: '새 로그인 확인 후 복합 사건 재판정', request: { ...suspicious, requestId: randomUUID(), stepUp: { verified: true, authAgeSeconds: 60 } }, decision: 'allow' },
     { name: '클라이언트 헤더 출처는 신뢰하지 않음', request: { ...normal, requestId: randomUUID(), signals: { ...normal.signals, source: 'client_header' } }, decision: 'step_up', reasonCode: 'step_up_required' },
     { name: '지역만 다른 정상 조합은 허용', request: { ...normal, requestId: randomUUID(), signals: { ...normal.signals, region: 'foreign' } }, decision: 'allow' },
+    { name: '엔진 신호 없음 상태의 정상 메모 요청', request: { ...normal, requestId: randomUUID(), signals: { source: 'none', region: 'unknown', network: 'unknown', hour: normal.signals.hour } }, decision: 'allow' },
+    { name: '공개 API 접두 경로의 메모 요청', request: { ...normal, requestId: randomUUID(), path: '/api/notes/10000000-0000-4000-8000-000000000099' }, decision: 'allow' },
     { name: '메모 자원 GET', request: { ...normal, requestId: randomUUID() }, decision: 'allow' },
     { name: '메모 자원 PUT', request: { ...normal, requestId: randomUUID(), method: 'PUT', route: 'PUT /notes/:id' }, decision: 'allow' },
     { name: '일반 학생의 강사 공지 수정은 거부', request: { ...normal, requestId: randomUUID(), path: announcementPath, route: 'PUT /announcements/:id', method: 'PUT' }, decision: 'deny', reasonCode: 'resource_forbidden' },
     { name: '신뢰 설정의 강사는 공지 수정 가능', request: { ...normal, requestId: randomUUID(), subjectId: 'teacher_fixture', path: announcementPath, route: 'PUT /announcements/:id', method: 'PUT', service: 'announcements' }, decision: 'allow' },
+    { name: 'API 접두 경로의 강사 공지 수정', request: { ...normal, requestId: randomUUID(), subjectId: 'teacher_fixture', path: '/api' + announcementPath, route: 'PUT /announcements/:id', method: 'PUT', service: 'announcements' }, decision: 'allow' },
     { name: '기능 경로 export는 거부', request: { ...normal, requestId: randomUUID(), path: '/notes/export', route: 'GET /notes/:id' }, decision: 'deny', reasonCode: 'resource_forbidden' },
     { name: '쿼리로 자원 지정하는 요청은 거부', request: { ...normal, requestId: randomUUID(), queryLength: 4 }, decision: 'deny', reasonCode: 'resource_forbidden' },
   ];
