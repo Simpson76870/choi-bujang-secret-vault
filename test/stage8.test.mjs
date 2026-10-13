@@ -80,6 +80,14 @@ test('B cannot fetch A note; query id cannot override the resource ID in the pat
   assert.equal(result.supabase.queries[0].filters.find(([field]) => field === 'id')[1], NOTE_ID);
   assert.equal(result.supabase.tables.training_notes[0].content, '가상 본문');
 });
+test('unregistered other-zone memo is denied even when the requester owns that row', async () => {
+  const notes = [makeNote(NOTE_B_ID, USER_B)];
+  const result = await invokeNote({ method: 'GET', requester: USER_B, notes, url: '/api/notes/' + NOTE_B_ID });
+  assert.equal(result.response.statusCode, 404);
+  assert.deepEqual(result.response.payload, { error: 'RESOURCE_NOT_ALLOWED' });
+  assert.equal(result.supabase.queries.length, 0);
+});
+
 test('non-instructor cannot edit a published announcement by forging role/instructor_id in body', async () => {
   const announcements = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A)];
   const result = await invokeAnnouncement({ method: 'PUT', requester: USER_B, announcements,
