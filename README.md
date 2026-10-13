@@ -81,7 +81,7 @@ npm run decider:test
 - `src/decider.mjs`는 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 기본 허용 연결은 제공된 `learner_fixture` / `class_fixture` / `project_fixture` / 기기 `aaaaaaaaaaaaaaaa`의 `GET/PUT /notes/demo` 한 건뿐입니다.
 - 다른 주체·반·프로젝트·기기·메모 ID, 목록, 쿼리 자원 선택, `export` 같은 추가 경로 및 등록되지 않은 공지 자원은 `deny · resource_not_allowed · resource_scope`로 거부합니다. 판정은 환경변수 매핑에 의존하지 않습니다.
 - 실제 메모 API는 별도로 Supabase가 검증한 사용자 ID와 DB의 `owner_id`를 매 요청 비교합니다. 쿼리의 `id`는 자료 선택에 사용하지 않습니다.
-- 공지 API는 DB의 `training_announcements.instructor_id`와 인증된 사용자를 다시 비교하고 UPDATE 조건에도 적용합니다. 판정 계약에는 강사 역할/자원 소유 등록부가 없으므로, 등록된 신뢰 자원 연결이 없는 공지 수정은 기본 거부입니다.
+- 공지 API는 `/api/notices/:id`와 기존 `/api/announcements/:id` 경로를 같은 핸들러로 연결합니다. DB의 `training_announcements.instructor_id`와 인증된 사용자를 다시 비교하고 UPDATE 조건에도 적용합니다. 판정 계약에는 강사 역할/자원 소유 등록부가 없으므로, 등록된 신뢰 자원 연결이 없는 공지 수정은 기본 거부입니다.
 - `supabase/stage8-training-announcements.sql`은 별도 공지 테이블을 만들고 `anon`·`authenticated`의 직접 접근을 회수하며 서버의 `service_role` 접근만 남깁니다. 기존 메모 테이블과 내용은 변경하지 않습니다.
 
 ### 8단계 확인

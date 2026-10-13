@@ -48,6 +48,8 @@ test('stage 5 source URL is query-free HTTPS and route allowlist is present', as
     'DELETE /api/notes/:id',
     'GET /api/announcements/:id',
     'PUT /api/announcements/:id',
+    'GET /api/notices/:id',
+    'PUT /api/notices/:id',
   ]);
 });
 
