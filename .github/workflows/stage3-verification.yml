@@ -1,4 +1,4 @@
-name: Stage 8 verification
+name: Stage 9 verification
 
 on:
   push:
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-stage8:
+  verify-stage9:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Run unit and package tests
-        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:stage5 && npm run decider:test && npm run test:stage8 && npm run test:package
+        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:stage5 && npm run decider:test && npm run detect:test && npm run test:stage9 && npm run test:stage8 && npm run test:package
 
       - name: Build deployment identity manifest
         env:
@@ -63,7 +63,7 @@ jobs:
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
-              && [ "$manifest_status" = "200" ] && grep -q '"step": 8' /tmp/aleph-response.json \
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 9' /tmp/aleph-response.json \
               && grep -q "\"commit\": \"$expected_runtime_sha\"" /tmp/aleph-response.json; then
               echo "Unauthenticated API returned JSON 401; /aleph.json matches runtime-source commit $expected_runtime_sha (workflow commit $GITHUB_SHA)."
               ready=1
@@ -79,12 +79,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate stage 8 submission JSON
+      - name: Generate stage 9 submission JSON
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          ALEPH_CHANGED_FILES_BASE: 8f2aed503f1f8cc1387730ee206e2e51d4e77b3f
+          ALEPH_CHANGED_FILES_BASE: 33ac72830c9c312b9a4c4060f6a8a5be6d0c6098
         run: |
-          printf '%s\n' '{"explanation":"8단계: notes와 announcements 자원을 정확한 path/route/method로 구분합니다. 메모 API는 저장된 owner_id를 검증하고 공지 수정 API는 검증된 로그인 사용자와 DB의 instructor_id를 대조합니다. 위조 body role은 권한에 쓰지 않습니다.","blockedAt":"판정 계약에는 강사 역할·동적 자원 소유 등록부가 없으므로 제공된 learner_fixture /notes/demo만 기본 허용; 등록된 공지 권한이 없는 수정 요청은 기본 거부"}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"9단계: 가명 사용자·확인된 가상 기기·요청 메서드·판정·네트워크만 화이트리스트로 읽습니다. 동일 주체/기기의 10분 창 안 허용 GET 121건 이상과 비정상 네트워크가 함께 있을 때에만 burst_read 탐지 결과와 단일 기기 회수 제안을 냅니다. 기존 접속 판정 응답은 변경하지 않습니다.","blockedAt":"실제 운영 엔진의 기기/네트워크 사건 전달, 회수 집행 및 첫 의심 요청부터의 경과 시간 측정은 미실행입니다. detectDeviceEvents는 source=local_virtual_fixture인 가상 입력만 처리합니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
@@ -96,22 +96,22 @@ jobs:
           import { readFileSync } from 'node:fs';
           const bundle = JSON.parse(readFileSync('artifacts/submission.json', 'utf8'));
           assert.equal(bundle.schema, 'aleph.defense.submission.v2');
-          assert.equal(bundle.step, 8);
+          assert.equal(bundle.step, 9);
           const observed = new Map(bundle.attackAttempts.map(item => [item.attackId, item.observed]));
           assert.match(observed.get('homepage_security_header') ?? '', /보안 헤더/u);
           assert.match(observed.get('anonymous_notes_list') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('anonymous_note_item') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
-          assert.match(observed.get('deployment_manifest') ?? '', /단계 8/u);
+          assert.match(observed.get('deployment_manifest') ?? '', /단계 9/u);
           assert.match(observed.get('anonymous_direct_data_api') ?? '', /anon direct Data API는 권한 오류로 거부함/u);
-          console.log('8단계 실배포 검사 여섯 항목이 모두 기대한 결과를 냈습니다.');
+          console.log('9단계 제출 묶음의 공개 HTTP 점검 여섯 항목을 확인했습니다. 이는 실제 회수나 심판 통과의 증거가 아닙니다.');
           NODE
 
-      - name: Upload stage 8 submission JSON
+      - name: Upload stage 9 submission JSON
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: stage8-submission
+          name: stage9-submission
           path: artifacts/submission.json
           if-no-files-found: warn
           retention-days: 14
