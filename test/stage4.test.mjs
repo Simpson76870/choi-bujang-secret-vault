@@ -75,7 +75,7 @@ function memorySupabase(initialRows) {
             const found = this.matchingRows();
             for (const row of found) rows.splice(rows.indexOf(row), 1);
             queries.push({ operation: this.operation, filters: [...this.filters] });
-            return Promise.resolve({ data: found.map(row => ({ id: row.id })), error: null }).then(resolve, reject);
+            return Promise.resolve({ data: found.map(row => ({ id: row.id, owner_id: row.owner_id })), error: null }).then(resolve, reject);
           }
           const found = this.matchingRows();
           queries.push({ operation: this.operation, filters: [...this.filters] });
@@ -147,8 +147,11 @@ test('owner can read, edit, and delete only their own note', async () => {
   assert.deepEqual(Object.keys(putResult.response.payload).sort(), ['body', 'id', 'title']);
   assert.equal(putResult.supabase.rows[0].title, '바뀐 제목');
   assert.equal(putResult.supabase.rows[0].owner_id, USER_B);
-  assert.equal(putResult.supabase.queries[0].payload.owner_id, USER_B);
-  assert.ok(putResult.supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
+  const updateQuery = putResult.supabase.queries.find(query => query.operation === 'update');
+  assert.ok(updateQuery, 'owner edit should issue an update');
+  assert.equal(Object.hasOwn(updateQuery.payload, 'owner_id'), false, 'owner_id is never changed by note edits');
+  assert.ok(updateQuery.filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
+  assert.ok(putResult.supabase.queries.some(query => query.filters.some(([field, value]) => field === 'owner_id' && value === USER_B)));
 
   const deleteResult = await invokeItem('DELETE', USER_B, USER_B);
   assert.equal(deleteResult.response.statusCode, 200);
