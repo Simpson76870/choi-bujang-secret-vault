@@ -16,7 +16,9 @@
     "PUT /api/notes/:id",
     "DELETE /api/notes/:id",
     "GET /api/announcements/:id",
-    "PUT /api/announcements/:id"
+    "PUT /api/announcements/:id",
+    "GET /api/notices/:id",
+    "PUT /api/notices/:id"
   ],
   "originalApiUrl": "https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes",
   "restoreRoute": null

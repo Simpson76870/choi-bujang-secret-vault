@@ -84,7 +84,7 @@ jobs:
         env:
           ALEPH_CHANGED_FILES_BASE: 8f2aed503f1f8cc1387730ee206e2e51d4e77b3f
         run: |
-          printf '%s\n' '{"explanation":"8단계: notes와 announcements 자원을 정확한 path/route/method로 구분합니다. 메모 API는 저장된 owner_id를 검증하고 공지 수정 API는 검증된 로그인 사용자와 DB의 instructor_id를 대조합니다. 위조 body role은 권한에 쓰지 않습니다.","blockedAt":"실제 운영 강사 subjectId allowlist 및 공지 데이터 초기화는 미확인; 가상 API·판정기 시험은 통과"}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"8단계: notes와 announcements 자원을 정확한 path/route/method로 구분합니다. 메모 API는 저장된 owner_id를 검증하고 공지 수정 API는 검증된 로그인 사용자와 DB의 instructor_id를 대조합니다. 위조 body role은 권한에 쓰지 않습니다.","blockedAt":"판정 계약에는 강사 역할·동적 자원 소유 등록부가 없으므로 제공된 learner_fixture /notes/demo만 기본 허용; 등록된 공지 권한이 없는 수정 요청은 기본 거부"}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
