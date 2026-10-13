@@ -73,7 +73,7 @@
         <label for="note-body">본문</label>
         <textarea id="note-body" name="body" maxlength="2000" required></textarea>
         <div class="actions">
-          <button class="primary" id="save-note" type="submit">메모 추가</button>
+          <button class="primary" id="save-note" type="submit" disabled>등록 메모 선택</button>
           <button id="cancel-edit" type="button" hidden>수정 취소</button>
         </div>
       </form>
@@ -112,14 +112,15 @@
     function setBusy(value) {
       busy = value;
       authForm.querySelectorAll('button').forEach((button) => { button.disabled = value; });
-      saveNoteButton.disabled = value;
+      saveNoteButton.disabled = value || editingIdInput.value !== PROVISIONED_NOTE_ID;
       $('#sign-out').disabled = value;
     }
 
     function resetEditor() {
       editingIdInput.value = '';
       noteForm.reset();
-      saveNoteButton.textContent = '메모 추가';
+      saveNoteButton.textContent = '등록 메모 선택';
+      saveNoteButton.disabled = true;
       cancelEditButton.hidden = true;
     }
 
@@ -199,6 +200,7 @@
           noteTitle.value = note.title;
           noteBody.value = note.body;
           saveNoteButton.textContent = '수정 저장';
+          saveNoteButton.disabled = false;
           cancelEditButton.hidden = false;
           noteTitle.focus();
         });
