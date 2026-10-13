@@ -26,18 +26,17 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 
 | Method | Path | 동작 |
 | --- | --- | --- |
-| GET | `/api/notes` | 8단계에서 목록은 구역 범위가 불명확하므로 `403 RESOURCE_SCOPE_REQUIRED` |
-| POST | `/api/notes` | 등록된 구역 연결이 없는 생성 요청은 `403 RESOURCE_SCOPE_REQUIRED` |
-| GET | `/api/notes/:id` | 등록된 가상 자원 ID `10000000-0000-4000-8000-000000000099`이며 로그인 사용자 소유자까지 일치할 때만 허용 |
-| PUT | `/api/notes/:id` | 위와 같은 등록 자원에 한해 `{ title, body }` 수정 허용 |
-| DELETE | `/api/notes/:id` | 8단계 정책에 없는 메서드이므로 `405 METHOD_NOT_ALLOWED` |
-| 기타 메모 ID | `/api/notes/:id` | 구역 등록부에 없는 ID는 DB 조회 전에 `404 RESOURCE_NOT_ALLOWED` |
+| GET | `/api/notes` | 로그인 사용자 소유자의 메모 배열 `{ notes: [{ id, title, body }] }` |
+| POST | `/api/notes` | `{ id?, title, body }`로 메모 생성. id가 없으면 서버에서 UUID를 만들고 `{ id, title, body }`를 반환 |
+| GET | `/api/notes/:id` | 메모 한 건 `{ id, title, body }`; 없으면 404 |
+| PUT | `/api/notes/:id` | `{ title, body }`로 메모 수정 |
+| DELETE | `/api/notes/:id` | 삭제 결과 `{ id, deleted: true }`; 이미 없으면 404 |
 
 로그인 토큰이 없거나 잘못되면 API는 HTML이 아닌 JSON 오류와 HTTP 401을 반환합니다. API는 서버 전용 `SUPABASE_SECRET_KEY`를 사용하므로 RLS만 믿지 않고 각 요청에서 `owner_id`를 검증합니다.
 
 ## 5단계: 자료 요청을 서버 한곳으로 모읍니다
 
-- `aleph.config.json`의 `allowedRoutes`는 단건 메모 GET/PUT 및 공지 단건 경로만 열거합니다. 메모 목록·생성·삭제 경로는 8단계 허용 목록에서 제외했습니다.
+- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 8입니다.
 - `originalApiUrl`은 쿼리 문자열이 없는 원본 Data API 경로 `https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes`입니다.
 - `vercel.json`은 첫 HTML 응답에 `X-Content-Type-Options: nosniff`, `Content-Security-Policy` 등 보안 헤더를 설정합니다.
 - `supabase/stage5-training-notes-direct-access.sql`의 권한 회수문은 현재 학습용 Supabase DB에 적용했습니다. 적용 후 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE 유효 권한이 모두 `false`이고, `service_role`의 서버 권한은 유지되는 것을 직접 조회해 확인했습니다. 다른 테이블은 건드리지 않습니다.
@@ -77,23 +76,28 @@ npm run decider:test
 정상 가상 요청은 `allow`, 복합 이상 접속과 출처 불명 신호는 `step_up · step_up_required`, 새 로그인 시각이 검증된 복합 사건은 재판정에서 `allow`가 나와야 합니다. 지역만 다른 정상 조합은 허용되어야 합니다. 이 시험은 운영 심판 판정이나 실제 자료 차단의 증거가 아닙니다.
 
 
-## 8단계: 자료마다 갈 수 있는 구역을 나눕니다
+## 8단계 저장점: 자료마다 갈 수 있는 구역을 나눕니다
 
-- `src/decider.mjs`는 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 기본 허용 연결은 제공된 `learner_fixture` / `class_fixture` / `project_fixture` / 기기 `aaaaaaaaaaaaaaaa`의 `GET/PUT /notes/demo` 한 건뿐입니다.
-- 실제 Vercel API도 같은 등록부의 `notes:demo`를 UUID `10000000-0000-4000-8000-000000000099`에 연결합니다. 단건 GET/PUT은 등록된 ID와 DB의 `owner_id`가 모두 일치해야 합니다. 목록·생성·삭제 및 다른 UUID는 구역 정보가 없으므로 기본 거부하며, 이 API 경계는 판정기 연습과 별도로 실제 요청 경로에 적용됩니다.
-- 다른 주체·반·프로젝트·기기·메모 ID, 목록, 쿼리 자원 선택, `export` 같은 추가 경로 및 등록되지 않은 공지 자원은 `deny · resource_not_allowed · resource_scope`로 거부합니다. 판정은 환경변수 매핑에 의존하지 않습니다.
-- 실제 메모 API는 별도로 Supabase가 검증한 사용자 ID와 DB의 `owner_id`를 매 요청 비교합니다. 쿼리의 `id`는 자료 선택에 사용하지 않습니다.
-- 공지 API는 `/api/notices/:id`와 기존 `/api/announcements/:id` 경로를 같은 핸들러로 연결합니다. DB의 `training_announcements.instructor_id`와 인증된 사용자를 다시 비교하고 UPDATE 조건에도 적용합니다. 판정 계약에는 강사 역할/자원 소유 등록부가 없으므로, 등록된 신뢰 자원 연결이 없는 공지 수정은 기본 거부입니다.
-- `supabase/stage8-training-announcements.sql`은 별도 공지 테이블을 만들고 `anon`·`authenticated`의 직접 접근을 회수하며 서버의 `service_role` 접근만 남깁니다. 기존 메모 테이블과 내용은 변경하지 않습니다.
+- 판정기에서 자료별 자원 ID를 분리합니다. 본인 메모 fixture는 `notes:demo`이며 `class_fixture` / `project_fixture` / `learner_fixture` / 기기 `aaaaaaaaaaaaaaaa` 조합에 GET/PUT만 허용합니다. 강사 공지 fixture는 별도 ID `announcements:demo`이며 `instructor_fixture`와 등록 기기 `bbbbbbbbbbbbbbbb` 조합에 PUT만 허용합니다. 호환 경로 `/notices/demo`에도 별도 ID `notices:demo`를 두되, 동일한 강사·기기 범위에서 PUT만 허용합니다.
+- 판정은 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 브라우저가 보낸 사용자 ID나 역할을 사용하지 않습니다. 다른 주체·반·프로젝트·기기·서비스·자원 ID, 쿼리 선택, `export` 같은 추가 경로는 기본 거부합니다.
+- 실제 메모 API는 로그인 토큰에서 서버가 검증한 Supabase 사용자 ID를 사용합니다. 목록 조회는 `owner_id`를 필터링하고, 새 메모의 소유자는 서버에서 지정하며, 단건 GET/PUT/DELETE는 URL의 메모 ID와 검증된 소유자 ID를 함께 비교합니다. 쿼리 문자열의 `id`는 자원 선택에 사용하지 않습니다.
+- 강사 공지는 `training_announcements` 테이블의 별도 UUID 자원입니다. 공개된 공지는 읽을 수 있지만, 미공개 초안은 해당 강사만 읽을 수 있습니다. 수정은 저장된 `instructor_id`와 인증된 사용자 ID가 일치할 때만 가능하고 UPDATE 조건에서도 강사 ID를 다시 확인합니다. 요청 본문의 `role`이나 `instructor_id`는 신뢰하지 않습니다.
+- `/api/announcements/:id`와 `/api/notices/:id`는 동일한 강사 권한 검사를 사용합니다. 두 경로 모두 ID는 URL 경로에서 읽으며 쿼리 파라미터로 자원을 바꿀 수 없습니다.
+- `supabase/stage8-training-announcements.sql`은 기존 메모 테이블을 바꾸지 않고 별도 공지 테이블을 만듭니다. `anon`·`authenticated`의 직접 접근을 회수하며, 실제 API는 서버 측 권한 검사 후 서버 전용 키로 조회·수정합니다.
 
 ### 8단계 확인
 
 ```sh
 npm run decider:test
+npm run test:stage4
+npm run test:stage5
 npm run test:stage8
+npm run build
 ```
 
-가상 판정에서는 정상 메모 접근이 허용되고, 일반 학생의 공지 수정 및 알 수 없는 경로는 거부되어야 합니다. API 테스트에서는 A 본인 메모는 읽고 수정할 수 있지만 B가 A의 메모를 직접 요청해도 메모가 나오지 않아야 하며, `role: "teacher"`를 위조한 일반 학생의 공지 수정도 거부되어야 합니다.
+가상 판정에서는 본인 메모의 GET/PUT과 등록된 강사의 공지 PUT이 허용되고, 다른 주체·반·프로젝트·기기·등록되지 않은 자원, 일반 학생의 공지 수정, `export` 같은 경로는 거부되어야 합니다. API 테스트에서는 A가 자기 메모를 읽고 수정·삭제할 수 있고, B가 A의 메모를 요청하면 404가 반환되어야 합니다. 공지 API는 저장된 강사 ID를 다시 비교해야 합니다. 이들은 로컬·모의 테스트이며 운영 심판 판정을 대신하지 않습니다.
+
+저장소의 기존 8단계 GitHub Actions 검증은 PR에서 회귀 테스트와 로컬 빌드를 실행하고, main 배포가 해당 커밋으로 완료된 뒤 실제 HTTP 관찰 결과를 `npm run bundle`로 묶어 제출 JSON 아티팩트로 보관합니다. `bundle-notes.json`은 실행 중 생성하는 임시 파일이며 저장소에 커밋하지 않습니다.
 
 ## 확인 및 제출
 
@@ -115,6 +119,6 @@ npm run build
 - A는 본인 메모를 읽고 추가·수정·삭제할 수 있고, B는 A의 메모를 읽거나 변경·삭제할 수 없어야 합니다. Stage 4/5 자동 테스트는 별도 가상 A/B ID를 사용해 소유자 검사를 검증하지만, 실제 배포의 A/B 로그인 세션 검증은 두 테스트 계정으로 별도 수행해야 합니다.
 - 공개 키만으로 원본 Data API를 호출해도 데이터가 반환되지 않는지 확인합니다. DB 권한 조회에서는 `anon`·`authenticated`의 메모 테이블 직접 CRUD가 모두 거부되는 것을 확인했습니다.
 - `/aleph.json`이 열리고 단계가 8이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
-- 브라우저의 메모 읽기·수정은 등록된 단건 경로 `/api/notes/10000000-0000-4000-8000-000000000099`만 사용합니다. 목록·생성·삭제 요청은 UI와 API 모두에서 제외되며 Auth 호출은 이번 단계에서 변경하지 않았습니다.
+- 브라우저의 메모 CRUD 요청은 `/api/notes` 경로만 사용합니다. Auth 호출은 이번 단계에서 변경하지 않았습니다.
 
 8단계에서 `npm run decider:test`는 제공된 본인 메모 fixture와 다른 주체·반·프로젝트·기기·자원 경로의 거부를 기본 설정 그대로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.

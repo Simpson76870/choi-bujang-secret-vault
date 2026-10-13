@@ -127,15 +127,15 @@ test('single-note PUT denies another owner and does not alter the row', async ()
   assert.ok(supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
 });
 
-test('DELETE is outside the provisioned resource policy and leaves the row intact', async () => {
+test('single-note DELETE denies another owner and keeps the row', async () => {
   const { response, supabase } = await invokeItem('DELETE', USER_B, USER_A);
-  assert.equal(response.statusCode, 405);
+  assert.equal(response.statusCode, 404);
   assert.equal(supabase.rows.length, 1);
   assert.equal(supabase.rows[0].owner_id, USER_A);
-  assert.equal(supabase.queries.length, 0);
+  assert.ok(supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
 });
 
-test('owner can read and edit the provisioned note, but cannot use an unscoped delete', async () => {
+test('owner can read, edit, and delete only their own note', async () => {
   const getResult = await invokeItem('GET', USER_B, USER_B);
   assert.equal(getResult.response.statusCode, 200);
   assert.deepEqual(Object.keys(getResult.response.payload).sort(), ['body', 'id', 'title']);
@@ -151,12 +151,12 @@ test('owner can read and edit the provisioned note, but cannot use an unscoped d
   assert.ok(putResult.supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
 
   const deleteResult = await invokeItem('DELETE', USER_B, USER_B);
-  assert.equal(deleteResult.response.statusCode, 405);
-  assert.equal(deleteResult.supabase.rows.length, 1);
-  assert.equal(deleteResult.supabase.queries.length, 0);
+  assert.equal(deleteResult.response.statusCode, 200);
+  assert.deepEqual(deleteResult.response.payload, { id: NOTE_ID, deleted: true });
+  assert.equal(deleteResult.supabase.rows.length, 0);
 });
 
-test('POST is denied because collection creation has no registered resource scope', async () => {
+test('POST ignores a forged owner_id and stores the verified identity', async () => {
   const supabase = memorySupabase([]);
   const response = responseRecorder();
   const handler = createCollectionHandler(authenticatedAs(USER_B, supabase));
@@ -167,13 +167,13 @@ test('POST is denied because collection creation has no registered resource scop
     body: { id: NEW_NOTE_ID, title: 'B의 메모', body: '가상 본문', owner_id: USER_A },
   }, response);
 
-  assert.equal(response.statusCode, 403);
-  assert.deepEqual(response.payload, { error: 'RESOURCE_SCOPE_REQUIRED' });
-  assert.equal(supabase.rows.length, 0);
-  assert.equal(supabase.queries.length, 0);
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(response.payload, { id: NEW_NOTE_ID, title: 'B의 메모', body: '가상 본문' });
+  assert.equal(supabase.rows[0].owner_id, USER_B);
+  assert.equal(supabase.queries[0].payload.owner_id, USER_B);
 });
 
-test('POST without a resource binding is default-denied even when the ID would be server-generated', async () => {
+test('POST with server-generated ID returns the full single-note response shape', async () => {
   const supabase = memorySupabase([]);
   const response = responseRecorder();
   const handler = createCollectionHandler(authenticatedAs(USER_B, supabase));
@@ -184,13 +184,17 @@ test('POST without a resource binding is default-denied even when the ID would b
     body: { title: '자동 ID 메모', body: '가상 본문', owner_id: USER_A },
   }, response);
 
-  assert.equal(response.statusCode, 403);
-  assert.deepEqual(response.payload, { error: 'RESOURCE_SCOPE_REQUIRED' });
-  assert.equal(supabase.rows.length, 0);
-  assert.equal(supabase.queries.length, 0);
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(Object.keys(response.payload).sort(), ['body', 'id', 'title']);
+  assert.match(response.payload.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
+  assert.equal(response.payload.title, '자동 ID 메모');
+  assert.equal(response.payload.body, '가상 본문');
+  assert.equal(supabase.rows[0].id, response.payload.id);
+  assert.equal(supabase.rows[0].owner_id, USER_B);
+  assert.equal(supabase.queries[0].payload.owner_id, USER_B);
 });
 
-test('collection GET is default-denied because a list has no exact resource binding', async () => {
+test('collection GET lists rows only for the authenticated owner', async () => {
   const supabase = memorySupabase([
     makeNote(NOTE_ID, USER_A, 'A 메모'),
     makeNote(NEW_NOTE_ID, USER_B, 'B 메모'),
@@ -199,9 +203,9 @@ test('collection GET is default-denied because a list has no exact resource bind
   const handler = createCollectionHandler(authenticatedAs(USER_B, supabase));
   await handler({ method: 'GET', url: '/api/notes', headers: {} }, response);
 
-  assert.equal(response.statusCode, 403);
-  assert.deepEqual(response.payload, { error: 'RESOURCE_SCOPE_REQUIRED' });
-  assert.equal(supabase.queries.length, 0);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload.notes.map(note => note.title), ['B 메모']);
+  assert.ok(supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
 });
 
 test('default Vercel route exports remain callable', () => {
