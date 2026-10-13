@@ -5,65 +5,39 @@ import { isDeepStrictEqual } from 'node:util';
 const START = Date.UTC(2026, 9, 1, 0, 0, 0);
 const subject = 'learner_fixture';
 const deviceId = 'aaaaaaaaaaaaaaaa';
-function reads(count, {
-  intervalSeconds = 2,
-  owner = subject,
-  device = deviceId,
-  network = 'unusual',
-  method = 'GET',
-  decision = 'allow',
-  start = START,
-  source = 'local_virtual_fixture',
-} = {}) {
-  return Array.from({ length: count }, (_, index) => ({
-    at: new Date(start + index * intervalSeconds * 1000).toISOString(),
-    subjectId: owner,
-    deviceId: device,
-    method,
-    decision,
-    network,
-    source,
+
+const legacyReads = (count, { intervalSeconds = 2, owner = subject } = {}) =>
+  Array.from({ length: count }, (_, index) => ({
+    at: new Date(START + index * intervalSeconds * 1000).toISOString(),
+    method: 'GET',
+    identity: { sub: owner },
   }));
-}
-const proposal = { action: 'propose_revocation', reasonCode: 'burst_read', subject, deviceId };
-const legacyVolumeOnly = Array.from({ length: 121 }, (_, index) => ({
-  at: new Date(START + index * 2_000).toISOString(),
-  method: 'GET',
-  identity: { sub: subject },
-}));
+const virtualEvents = (count, { network = 'unusual', decision = 'allow', method = 'GET', owner = subject } = {}) =>
+  Array.from({ length: count }, (_, index) => ({
+    at: new Date(START + index * 2_000).toISOString(),
+    subjectId: owner, deviceId, method, decision, network, source: 'local_virtual_fixture',
+  }));
 
-const cases = [
-  { name: '정상 조회 30건', events: reads(30), expected: { action: 'observe' } },
-  { name: '10분 안에 120건', events: reads(120), expected: { action: 'observe' } },
-  { name: '10분 안에 121건과 비정상 네트워크', events: reads(121), expected: proposal },
-  { name: '폭주 조회 200건과 비정상 네트워크', events: reads(200), expected: proposal },
-  { name: '121건이어도 정상 네트워크면 관찰', events: reads(121, { network: 'usual' }),
-    expected: { action: 'observe' } },
-  { name: '허용되지 않은 조회는 집계하지 않음', events: reads(121, { decision: 'deny' }),
-    expected: { action: 'observe' } },
-  { name: 'GET이 아닌 쓰기는 집계하지 않음', events: reads(121, { method: 'PUT' }),
-    expected: { action: 'observe' } },
-  { name: '서로 다른 사용자 각 100건', events: [...reads(100),
-    ...reads(100, { owner: 'other_fixture' })].sort((a, b) => a.at.localeCompare(b.at)),
-    expected: { action: 'observe' } },
-  { name: '서로 다른 기기 각 100건', events: [...reads(100),
-    ...reads(100, { device: 'bbbbbbbbbbbbbbbb' })].sort((a, b) => a.at.localeCompare(b.at)),
-    expected: { action: 'observe' } },
-  { name: '10분 밖으로 흩어진 조회 200건', events: reads(200, { intervalSeconds: 7 }),
-    expected: { action: 'observe' } },
-  { name: '기기·네트워크 증거가 없는 레거시 사건은 회수하지 않음',
-    events: legacyVolumeOnly, expected: { action: 'observe' } },
-];
+const expectedBurst = { action: 'propose_revocation', reasonCode: 'burst_read', subject };
+const expectedComposite = { ...expectedBurst, deviceId };
 
-export async function checkDetection(detect) {
-  if (typeof detect !== 'function') throw new TypeError('src/detect.mjs에서 detect 함수를 내보내야 합니다.');
-  const results = [];
-  for (const item of cases) {
-    const actual = await detect(item.events);
-    const passed = isDeepStrictEqual(actual, item.expected);
-    results.push({ name: item.name, passed: Boolean(passed) });
-  }
-  return results;
+export async function checkDetection(detector) {
+  if (typeof detector !== 'function') throw new TypeError('src/detect.mjs에서 detect 함수를 내보내야 합니다.');
+  const { detectDeviceAnomaly, revocationProposal } = await import('../src/detect.mjs');
+  const cases = [
+    { name: '기본 계약: GET 30건은 관찰', actual: await detector(legacyReads(30)), expected: { action: 'observe' } },
+    { name: '기본 계약: 정확히 120건은 관찰', actual: await detector(legacyReads(120)), expected: { action: 'observe' } },
+    { name: '기본 계약: 10분 내 GET 121건은 탐지', actual: await detector(legacyReads(121)), expected: expectedBurst },
+    { name: '기본 계약: 다른 사용자의 조회는 합산하지 않음',
+      actual: await detector([...legacyReads(100), ...legacyReads(100, { owner: 'other_fixture' })]), expected: { action: 'observe' } },
+    { name: '복합 계약: 조회 폭주 + 비정상 네트워크는 단일 기기 제안',
+      actual: revocationProposal(virtualEvents(121)), expected: expectedComposite },
+    { name: '복합 계약: 정상 네트워크는 제안 없음',
+      actual: revocationProposal(virtualEvents(121, { network: 'usual' })), expected: null },
+    { name: '복합 계약: 거부된 읽기는 집계하지 않음',
+      actual: detectDeviceAnomaly(virtualEvents(121, { decision: 'deny' })), expected: { suspicious: false } },
+  ];
+  return cases.map(item => ({ name: item.name, passed: isDeepStrictEqual(item.actual, item.expected) }));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {

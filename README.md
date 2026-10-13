@@ -5,9 +5,9 @@
 ## 9단계 저장점: 도플갱어를 찾고 권한을 거둡니다
 
 - 기존 로그인, 본인 메모 CRUD, 6·7단계 기기/추가 확인, 8단계 자원 구역 검사는 보존합니다.
-- 공식 진입점 `detect(events)`는 `readDetectionEvents(events)`로 검증된 가상 사건만 사용합니다. 레거시 `{at, method, identity.sub}` 사건에는 기기·네트워크 근거가 없어 회수 제안하지 않습니다. 새 파서는 타임스탬프, 가명 주체 ID, 16자리 기기 ID, 메서드, 판정, 네트워크, 허용된 출처만 복사하며 본문·토큰·실명·헤더·임의 필드는 결과에 포함하지 않습니다.
-- `detectDeviceAnomaly(events)`는 **같은 가명 주체·같은 기기**의 허용된 GET이 연속된 10분 창에서 120건을 초과하고 그 창 안에 유효한 비정상 네트워크 로그가 하나 이상 있을 때만 의심을 표시합니다. 네트워크 근거는 `network` 또는 `signals.network`와 동등한 명시적 신호에서 오며 별도 로그일 수 있습니다. 네트워크 신호 로그 자체는 조회 건수로 세지 않습니다. 지역 하나만으로 탐지하지 않고, 다른 사용자·다른 기기·쓰기/거부 요청·정상 네트워크·10분 창 밖 사건을 합산하지 않습니다.
-- `detect(events)`의 관찰 결과와 별개로 `revocationProposal(events)`가 복합 의심 증거가 있을 때만 `{ action: 'propose_revocation', reasonCode: 'burst_read', subject, deviceId }` 제안을 반환합니다. 정상·불완전 사건은 `null`을 반환합니다. 제안은 검증된 가상 기기 한 개만 대상으로 하며 API를 호출하거나 `decide(request)`의 다섯 필드 응답을 변경하지 않습니다.
+- 기본 `detect(events)`는 원래 `{ at, method, identity: { sub } }` 계약을 유지합니다. 별도 `revocationProposal(events)`는 정확한 7필드 로컬 가상 사건을 처리하고, 같은 가명 사용자·기기의 허용 GET 120건 초과와 같은 창의 비정상 네트워크가 함께 있을 때만 단일 기기 제안을 냅니다. 본문·토큰·실명·헤더·임의 필드는 결과에 포함하지 않습니다.
+- `detectDeviceAnomaly(events)`는 문서에 정의한 정확한 로컬 가상 사건 형식만 읽습니다. 같은 가명 주체·같은 기기의 허용 GET이 연속된 10분 창에서 120건을 초과하고 그 창 안에 `network: 'unusual'`이 하나 이상 있을 때만 의심을 표시합니다. 비정상 네트워크 사건은 조회 횟수에 포함하지 않습니다. 지역만 다른 사건, 다른 사용자·기기·창의 사건은 합산하지 않습니다.
+- `revocationProposal(events)`는 기본 `detect(events)`와 분리된 결과로 복합 의심 증거가 있을 때만 `{ action: 'propose_revocation', reasonCode: 'burst_read', subject, deviceId }`를 반환합니다. 조건 미충족 또는 잘못된 입력이면 `null`을 반환하며, API를 호출하거나 `decide(request)`의 다섯 필드 응답을 변경하지 않습니다.
 - 이 입력은 명시적으로 `source: 'local_virtual_fixture'`인 로컬 가상 사건입니다. 실제 엔진의 기본 세 필드 사건에는 기기·네트워크가 없으므로, 운영 사건 전달·실제 권한 회수·첫 의심 요청부터의 경과 시간은 미실행이며 심판/운영 엔진 확인 대상입니다. 회수 API 호출이나 기기 권한 변경은 구현하지 않았습니다.
 
 재현:
