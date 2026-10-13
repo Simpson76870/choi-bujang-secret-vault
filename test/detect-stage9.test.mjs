@@ -36,7 +36,7 @@ test('discards untrusted or malformed virtual events instead of guessing', () =>
     { ...valid, subjectId: '' },
     { ...valid, method: 'FETCH' },
     { ...valid, decision: 'maybe' },
-    { ...valid, network: 'unknown' },
+    { ...valid, network: 'banana' },
     { ...valid, at: 'not-a-time' },
     { ...valid, at: '2026-10-01' },
     null,
@@ -98,6 +98,28 @@ test('combines allowed-read volume with a separate unusual-network log for the s
     reasonCode: 'burst_read',
     subject: 'learner_fixture',
     deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+});
+
+test('accepts timestamps without milliseconds, epoch seconds, and network anomaly aliases', () => {
+  const compact = Array.from({ length: 121 }, (_, index) => ({
+    at: new Date(START + index * 2_000).toISOString().replace('.000Z', 'Z'),
+    method: 'GET',
+    identity: { sub: 'learner_fixture' },
+    deviceId: 'virtual-device-a',
+  }));
+  compact.push({
+    at: START / 1000,
+    identity: { sub: 'learner_fixture' },
+    deviceId: 'virtual-device-a',
+    network: 'unusual_network',
+    type: 'network_anomaly',
+  });
+  assert.deepEqual(detect(compact), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'virtual-device-a',
   });
 });
 

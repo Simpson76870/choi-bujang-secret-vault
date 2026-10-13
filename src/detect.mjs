@@ -10,9 +10,15 @@ const WINDOW_MS = 10 * 60 * 1000;
 const READ_LIMIT = 120;
 
 function parseTime(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const milliseconds = Math.abs(value) < 1e12 ? value * 1000 : value;
+    return Number.isFinite(milliseconds) && Math.abs(milliseconds) <= 8.64e15
+      ? milliseconds : null;
+  }
+  if (typeof value !== 'string'
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(value)) return null;
   const time = Date.parse(value);
-  return Number.isFinite(time) && new Date(time).toISOString() === value ? time : null;
+  return Number.isFinite(time) ? time : null;
 }
 
 function normalizeMethod(value) {
@@ -33,13 +39,18 @@ function normalizeDecision(value) {
 }
 
 function normalizeNetwork(event) {
-  const signals = event.signals && typeof event.signals === 'object' && !Array.isArray(event.signals)
-    ? event.signals : {};
-  const signal = event.signal && typeof event.signal === 'object' && !Array.isArray(event.signal)
-    ? event.signal : {};
+  const objectAt = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const signals = objectAt(event.signals);
+  const signal = objectAt(event.signal);
+  const riskSignals = objectAt(event.riskSignals);
+  const networkObject = objectAt(event.network);
   const candidates = [
-    event.network, signals.network, signal.network,
+    typeof event.network === 'string' ? event.network : undefined,
+    signals.network, signal.network, riskSignals.network,
     event.networkStatus, event.networkState, event.networkType,
+    event.networkClass, signals.networkClass, signal.networkClass,
+    networkObject.status, networkObject.type, networkObject.kind,
+    signals.network?.status, signals.network?.type,
   ];
   for (const candidate of candidates) {
     if (typeof candidate !== 'string') continue;
@@ -50,8 +61,9 @@ function normalizeNetwork(event) {
     if ([
       'unusual', 'new', 'different', 'unknown', 'unrecognized', 'untrusted',
       'foreign', 'changed', 'novel', 'other', 'anomalous', 'suspicious',
-      'new_network', 'network_change', 'network_changed', 'different_network',
-      'foreign_network', 'unknown_network', 'unfamiliar', 'unexpected_network',
+      'new_network', 'unusual_network', 'network_change', 'network_changed',
+      'different_network', 'different_from_usual', 'foreign_network', 'unknown_network',
+      'unfamiliar', 'unexpected_network', 'unrecognized_network', 'network_anomaly',
       'roaming', 'public', 'vpn'
     ].includes(value)) return 'unusual';
   }
@@ -59,10 +71,12 @@ function normalizeNetwork(event) {
   const isChanged = event.networkChanged === true
     || signals.networkChanged === true
     || signals.networkAnomaly === true
+    || signals.unusualNetwork === true
+    || riskSignals.networkChanged === true
+    || riskSignals.unusualNetwork === true
     || signal.changed === true
-    || event.unusualNetwork === true
-    || event.kind === 'network_change'
-    || event.type === 'network_change';
+    || [event.kind, event.type, event.signalType].some(value => typeof value === 'string'
+      && /(?:unusual|changed|change|anomal|foreign|new|different).*network|network.*(?:unusual|changed|change|anomal|foreign|new|different)/iu.test(value));
   return isChanged ? 'unusual' : null;
 }
 
