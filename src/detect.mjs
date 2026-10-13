@@ -220,13 +220,25 @@ export function detectDeviceAnomaly(events) {
  * Return a separate revocation proposal for exactly one validated virtual device.
  * This does not call an API, revoke a device, or alter the access decision response.
  */
-export function detectDeviceEvents(events) {
+/**
+ * Create the separate Stage 9 revocation proposal from composite evidence.
+ * A non-suspicious or ambiguous event batch produces no proposal (null).
+ * The proposal targets one validated virtual device and contains only the
+ * action, reason code, pseudonymous subject, and device identifier.
+ * This function does not call a revocation API or change device access.
+ */
+export function revocationProposal(events) {
   const candidate = detectDeviceAnomaly(events);
-  if (!candidate.suspicious) return { action: 'observe' };
-  return {
+  if (!candidate.suspicious) return null;
+  return Object.freeze({
     action: 'propose_revocation',
     reasonCode: candidate.reasonCode,
     subject: candidate.subject,
     deviceId: candidate.deviceId,
-  };
+  });
+}
+
+/** Preserve the detector result while exposing the proposal as a separate result. */
+export function detectDeviceEvents(events) {
+  return revocationProposal(events) ?? { action: 'observe' };
 }

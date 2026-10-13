@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { detect, detectDeviceAnomaly, detectDeviceEvents, readDetectionEvents } from '../src/detect.mjs';
+import { detect, detectDeviceAnomaly, detectDeviceEvents, readDetectionEvents, revocationProposal } from '../src/detect.mjs';
 
 const valid = {
   at: '2026-10-01T00:00:00.000Z',
@@ -280,6 +280,18 @@ test('proposes revocation for exactly the detected device and preserves observe 
   });
   assert.deepEqual(detectDeviceEvents(reads(120)), { action: 'observe' });
   assert.deepEqual(detectDeviceEvents(reads(121, { network: 'usual' })), { action: 'observe' });
+});
+
+test('exposes a separate revocationProposal result only for the verified composite event', () => {
+  assert.deepEqual(revocationProposal(reads(121)), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+  assert.equal(revocationProposal(reads(120)), null);
+  assert.equal(revocationProposal(reads(121, { network: 'usual' })), null);
+  assert.equal(revocationProposal(reads(121, { deviceId: null })), null);
 });
 
 test('a batch with multiple candidates returns a proposal for only one confirmed device', () => {
