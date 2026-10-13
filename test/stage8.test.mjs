@@ -127,6 +127,8 @@ test('resource IDs accept either canonical service-local or public API path', as
   const announcements = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A)];
   const announcement = await invokeAnnouncement({ method: 'GET', requester: USER_B, announcements, url: '/announcements/' + ANNOUNCEMENT_ID });
   assert.equal(announcement.response.statusCode, 200);
+  const announcementApiPath = await invokeAnnouncement({ method: 'GET', requester: USER_B, announcements, url: '/api/announcements/' + ANNOUNCEMENT_ID });
+  assert.equal(announcementApiPath.response.statusCode, 200);
 });
 
 test('new routes are callable and API IDs reject feature-shaped paths', async () => {

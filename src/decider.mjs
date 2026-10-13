@@ -66,7 +66,7 @@ function resolveResource(request) {
       && ['GET', 'PUT', 'DELETE'].includes(request.method)) {
     return { resourceId: RESOURCE_IDS.note + ':' + noteMatch[1].toLowerCase(), zone: 'note' };
   }
-  const announcementMatch = /^\/announcements\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu.exec(request.path);
+  const announcementMatch = /^\/announcements\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu.exec(path);
   if (announcementMatch && UUID.test(announcementMatch[1])
       && request.route === request.method + ' /announcements/:id'
       && ['GET', 'PUT'].includes(request.method)) {
