@@ -78,11 +78,10 @@ npm run decider:test
 
 ## 8단계: 자료마다 갈 수 있는 구역을 나눕니다
 
-- `src/decider.mjs`에서 `/notes/:id`와 `/announcements/:id`는 서로 다른 이름 공간의 자원 ID로 구분합니다. 요청 계약에 새 필드를 추가하지 않고 엔진이 검증한 `path`·`route`·`method`·`subjectId`·`deviceId`를 사용합니다.
-- 허용 경로는 정해진 패턴과 일치해야 하며 쿼리 문자열, 잘못된 ID, `export` 같은 미등록 경로는 `resource_forbidden`으로 거부합니다.
-- 메모의 최종 권한은 기존 API가 DB의 `owner_id`와 로그인으로 검증한 사용자를 비교해 확인합니다. 메모 ID는 query string이 아니라 URL 경로에서만 읽습니다.
-- `GET /api/announcements/:id`는 게시된 공지를 읽을 수 있고, 미게시 공지는 해당 강사만 읽을 수 있습니다. `PUT`은 검증된 로그인 사용자 ID와 DB의 `instructor_id`가 일치할 때만 허용합니다. 본문이나 메뉴가 보낸 `role`·`instructor_id`는 권한으로 사용하지 않습니다. UPDATE 쿼리에도 `instructor_id` 조건을 적용합니다.
-- 강사 권한은 DB의 `training_announcements.instructor_id`로 확인합니다. 판정기에서 공지 수정을 허용할 강사의 엔진 가명 ID는 신뢰된 런타임 설정 `ALEPH_INSTRUCTOR_SUBJECT_IDS`에 쉼표로 구분해 설정합니다. 설정이 없으면 판정기에서 공지 수정은 기본 거부입니다.
+- `src/decider.mjs`는 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 기본 허용 연결은 제공된 `learner_fixture` / `class_fixture` / `project_fixture` / 기기 `aaaaaaaaaaaaaaaa`의 `GET/PUT /notes/demo` 한 건뿐입니다.
+- 다른 주체·반·프로젝트·기기·메모 ID, 목록, 쿼리 자원 선택, `export` 같은 추가 경로 및 등록되지 않은 공지 자원은 `deny · resource_not_allowed · resource_scope`로 거부합니다. 판정은 환경변수 매핑에 의존하지 않습니다.
+- 실제 메모 API는 별도로 Supabase가 검증한 사용자 ID와 DB의 `owner_id`를 매 요청 비교합니다. 쿼리의 `id`는 자료 선택에 사용하지 않습니다.
+- 공지 API는 DB의 `training_announcements.instructor_id`와 인증된 사용자를 다시 비교하고 UPDATE 조건에도 적용합니다. 판정 계약에는 강사 역할/자원 소유 등록부가 없으므로, 등록된 신뢰 자원 연결이 없는 공지 수정은 기본 거부입니다.
 - `supabase/stage8-training-announcements.sql`은 별도 공지 테이블을 만들고 `anon`·`authenticated`의 직접 접근을 회수하며 서버의 `service_role` 접근만 남깁니다. 기존 메모 테이블과 내용은 변경하지 않습니다.
 
 ### 8단계 확인
@@ -116,4 +115,4 @@ npm run build
 - `/aleph.json`이 열리고 단계가 8이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
 - 브라우저의 메모 CRUD 요청은 `/api/notes` 경로만 사용합니다. Auth 호출은 이번 단계에서 변경하지 않았습니다.
 
-8단계에서 `npm run decider:test`는 등록 기기, 복합 이상 접속, 자원 경로, 강사 공지 수정 권한을 가상 요청으로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
+8단계에서 `npm run decider:test`는 제공된 본인 메모 fixture와 다른 주체·반·프로젝트·기기·자원 경로의 거부를 기본 설정 그대로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
