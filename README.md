@@ -26,17 +26,18 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 
 | Method | Path | 동작 |
 | --- | --- | --- |
-| GET | `/api/notes` | 로그인 사용자 소유자의 메모 배열 `{ notes: [{ id, title, body }] }` |
-| POST | `/api/notes` | `{ id?, title, body }`로 메모 생성. id가 없으면 서버에서 UUID를 만들고 `{ id, title, body }`를 반환 |
-| GET | `/api/notes/:id` | 메모 한 건 `{ id, title, body }`; 없으면 404 |
-| PUT | `/api/notes/:id` | `{ title, body }`로 메모 수정 |
-| DELETE | `/api/notes/:id` | 삭제 결과 `{ id, deleted: true }`; 이미 없으면 404 |
+| GET | `/api/notes` | 8단계에서 목록은 구역 범위가 불명확하므로 `403 RESOURCE_SCOPE_REQUIRED` |
+| POST | `/api/notes` | 등록된 구역 연결이 없는 생성 요청은 `403 RESOURCE_SCOPE_REQUIRED` |
+| GET | `/api/notes/:id` | 등록된 가상 자원 ID `10000000-0000-4000-8000-000000000099`이며 로그인 사용자 소유자까지 일치할 때만 허용 |
+| PUT | `/api/notes/:id` | 위와 같은 등록 자원에 한해 `{ title, body }` 수정 허용 |
+| DELETE | `/api/notes/:id` | 8단계 정책에 없는 메서드이므로 `405 METHOD_NOT_ALLOWED` |
+| 기타 메모 ID | `/api/notes/:id` | 구역 등록부에 없는 ID는 DB 조회 전에 `404 RESOURCE_NOT_ALLOWED` |
 
 로그인 토큰이 없거나 잘못되면 API는 HTML이 아닌 JSON 오류와 HTTP 401을 반환합니다. API는 서버 전용 `SUPABASE_SECRET_KEY`를 사용하므로 RLS만 믿지 않고 각 요청에서 `owner_id`를 검증합니다.
 
 ## 5단계: 자료 요청을 서버 한곳으로 모읍니다
 
-- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 8입니다.
+- `aleph.config.json`의 `allowedRoutes`는 단건 메모 GET/PUT 및 공지 단건 경로만 열거합니다. 메모 목록·생성·삭제 경로는 8단계 허용 목록에서 제외했습니다.
 - `originalApiUrl`은 쿼리 문자열이 없는 원본 Data API 경로 `https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes`입니다.
 - `vercel.json`은 첫 HTML 응답에 `X-Content-Type-Options: nosniff`, `Content-Security-Policy` 등 보안 헤더를 설정합니다.
 - `supabase/stage5-training-notes-direct-access.sql`의 권한 회수문은 현재 학습용 Supabase DB에 적용했습니다. 적용 후 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE 유효 권한이 모두 `false`이고, `service_role`의 서버 권한은 유지되는 것을 직접 조회해 확인했습니다. 다른 테이블은 건드리지 않습니다.
@@ -79,6 +80,7 @@ npm run decider:test
 ## 8단계: 자료마다 갈 수 있는 구역을 나눕니다
 
 - `src/decider.mjs`는 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 기본 허용 연결은 제공된 `learner_fixture` / `class_fixture` / `project_fixture` / 기기 `aaaaaaaaaaaaaaaa`의 `GET/PUT /notes/demo` 한 건뿐입니다.
+- 실제 Vercel API도 같은 등록부의 `notes:demo`를 UUID `10000000-0000-4000-8000-000000000099`에 연결합니다. 단건 GET/PUT은 등록된 ID와 DB의 `owner_id`가 모두 일치해야 합니다. 목록·생성·삭제 및 다른 UUID는 구역 정보가 없으므로 기본 거부하며, 이 API 경계는 판정기 연습과 별도로 실제 요청 경로에 적용됩니다.
 - 다른 주체·반·프로젝트·기기·메모 ID, 목록, 쿼리 자원 선택, `export` 같은 추가 경로 및 등록되지 않은 공지 자원은 `deny · resource_not_allowed · resource_scope`로 거부합니다. 판정은 환경변수 매핑에 의존하지 않습니다.
 - 실제 메모 API는 별도로 Supabase가 검증한 사용자 ID와 DB의 `owner_id`를 매 요청 비교합니다. 쿼리의 `id`는 자료 선택에 사용하지 않습니다.
 - 공지 API는 `/api/notices/:id`와 기존 `/api/announcements/:id` 경로를 같은 핸들러로 연결합니다. DB의 `training_announcements.instructor_id`와 인증된 사용자를 다시 비교하고 UPDATE 조건에도 적용합니다. 판정 계약에는 강사 역할/자원 소유 등록부가 없으므로, 등록된 신뢰 자원 연결이 없는 공지 수정은 기본 거부입니다.
