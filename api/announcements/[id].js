@@ -36,12 +36,15 @@ export function createAnnouncementItemHandler(authenticate = authenticateStudent
       if (readError) return response.status(503).json({ error: 'ANNOUNCEMENTS_UNAVAILABLE' });
       if (!current) return missing(response);
       if (request.method === 'GET') {
-        const isInstructor = current.instructor_id === context.identity.userId;
+        const isInstructor = context.identity.isInstructor === true
+          && current.instructor_id === context.identity.userId;
         if (!current.published && !isInstructor) return missing(response);
         return response.status(200).json(present(current));
       }
-      // Verified Supabase identity is authoritative; body role/instructor_id are ignored.
-      if (current.instructor_id !== context.identity.userId) {
+      // Both signals must be trusted: server-managed Auth app_metadata role and the
+      // stored instructor_id. Request-body role/instructor_id are never authorization.
+      if (context.identity.isInstructor !== true
+          || current.instructor_id !== context.identity.userId) {
         return response.status(403).json({ error: 'INSTRUCTOR_REQUIRED' });
       }
       const input = bodyObject(request);
