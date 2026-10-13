@@ -38,33 +38,38 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const base = 'https://aleph-omega.vercel.app';
-          const path = '/defense';
-          const response = await fetch(base + path, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+          const response = await fetch(base + '/defense', { redirect: 'follow', signal: AbortSignal.timeout(15000) });
           const html = await response.text();
-          const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] ?? null;
-          const scripts = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]).slice(0, 20);
+          const scripts = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
+          const queue = [...scripts, 'assets/auth.js', 'assets/defense-campaign-live.js'];
+          const seen = new Set();
           const assets = [];
-          for (const script of scripts) {
-            const assetResponse = await fetch(new URL(script, base + path), { signal: AbortSignal.timeout(15000) });
-            const js = await assetResponse.text();
+          while (queue.length && seen.size < 12) {
+            const path = queue.shift();
+            const url = new URL(path, base + '/defense').href;
+            if (seen.has(url)) continue;
+            seen.add(url);
+            const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            const source = await r.text();
+            const importPaths = [...source.matchAll(/from\s+['"]([^'"]+\.js)['"]/g)].map(m => m[1]);
+            for (const imp of importPaths) {
+              if (imp.startsWith('./') || imp.startsWith('../')) queue.push(new URL(imp, url).pathname);
+            }
             assets.push({
-              url: new URL(script, base + path).href,
-              status: assetResponse.status,
-              length: js.length,
-              relevantLines: js.split(/\r?\n/).filter(line =>
-                /fetch\(|\/api\/|supabase|auth|session|judge|submit|score|mission|campaign|localStorage|Authorization|Bearer|cookie/i.test(line)
-              ).map(line => line.slice(0, 1000)).slice(0, 80),
-              excerpt: js.slice(0, 5000)
+              path,
+              status: r.status,
+              length: source.length,
+              imports: importPaths,
+              relevantLines: source.split(/\r?\n/).filter(line =>
+                /fetch\(|\/api\/|supabase|auth|session|judge|submit|score|mission|campaign|rpc\(|\.from\(|\.rpc\(|Authorization|Bearer|student|class_id|defense|revocation/i.test(line)
+              ).map(line => line.slice(0, 1400)).slice(0, 120)
             });
           }
           console.log(JSON.stringify({
-            requestedUrl: base + path,
-            finalUrl: response.url,
+            requestedUrl: base + '/defense',
             status: response.status,
-            contentType: response.headers.get('content-type'),
-            title,
-            scripts,
-            assets,
+            title: html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] ?? null,
+            assets
           }, null, 2));
           NODE
 
