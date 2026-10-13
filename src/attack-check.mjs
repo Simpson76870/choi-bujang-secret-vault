@@ -1,7 +1,7 @@
 // Self-check records only observations from actual HTTP requests, not judge decisions.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5].includes(config.step)) {
-    throw new Error('현재 자기 점검은 1~5단계만 지원합니다.');
+  if (![1, 2, 3, 4, 5, 6].includes(config.step)) {
+    throw new Error('현재 자기 점검은 1~6단계만 지원합니다.');
   }
 
   let app;

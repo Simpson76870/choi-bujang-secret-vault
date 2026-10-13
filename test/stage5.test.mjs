@@ -32,7 +32,7 @@ test('server functions preserve validated owner checks for all CRUD handlers', a
 
 test('stage 5 source URL is query-free HTTPS and route allowlist is present', async () => {
   const config = JSON.parse(await read('../aleph.config.json'));
-  assert.equal(config.step, 5);
+  assert.ok(config.step >= 5, 'stage 5 source API config remains available in later stages');
   assert.equal(config.originalApiUrl, 'https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes');
   const source = new URL(config.originalApiUrl);
   assert.equal(source.protocol, 'https:');

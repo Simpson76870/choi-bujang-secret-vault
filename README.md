@@ -1,4 +1,4 @@
-# BYTE BACK 방어전 시작 틀 — 5단계 저장점
+# BYTE BACK 방어전 시작 틀 — 6단계 저장점
 
 이 저장소는 자료 보호 실습용입니다. 화면과 데이터베이스에는 가상 학습 메모만 사용하세요. 실제 개인정보, 토큰, 비밀번호 또는 서버 전용 키를 코드·Git·로그·제출 묶음에 넣지 마세요.
 
@@ -36,12 +36,27 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 
 ## 5단계: 자료 요청을 서버 한곳으로 모읍니다
 
-- `aleph.config.json`의 `step`은 5이며, `allowedRoutes`에 위의 다섯 API 경로가 기록되어 있습니다.
+- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 6입니다.
 - `originalApiUrl`은 쿼리 문자열이 없는 원본 Data API 경로 `https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes`입니다.
 - `vercel.json`은 첫 HTML 응답에 `X-Content-Type-Options: nosniff`, `Content-Security-Policy` 등 보안 헤더를 설정합니다.
-- `supabase/stage5-training-notes-direct-access.sql`은 학습 테이블 `public.training_notes`에 대한 `PUBLIC`, `anon`, `authenticated`의 직접 권한을 회수하는 검토용 제안입니다. **이 SQL은 저장소에 준비만 했고, Supabase DB에는 아직 실행하지 않았습니다.** 실행 전 권한 조회문을 따로 실행하고 결과를 확인한 뒤 회수문을 실행하고, 마지막 확인문으로 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE가 모두 `false`인지 확인하세요. 다른 테이블은 건드리지 않습니다.
+- `supabase/stage5-training-notes-direct-access.sql`의 권한 회수문은 현재 학습용 Supabase DB에 적용했습니다. 적용 후 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE 유효 권한이 모두 `false`이고, `service_role`의 서버 권한은 유지되는 것을 직접 조회해 확인했습니다. 다른 테이블은 건드리지 않습니다.
 - 4단계 RLS 소유자 정책은 방어 심층화를 위해 유지합니다. 5단계 SQL을 적용한 다음에는 4단계 권한 SQL을 다시 실행하지 마세요. 그 SQL은 `authenticated`에 CRUD를 다시 부여합니다.
-- SQL을 실행하기 전까지는 4단계에서 부여된 `authenticated` 직접 권한이 DB에 남아 있을 수 있으므로, 직접 접근 차단이 운영 DB에 적용되었다고 간주하면 안 됩니다. 서버 함수의 로그인·소유자 검사는 계속 적용됩니다.
+- 5단계 SQL을 다시 적용할 필요는 없습니다. 4단계 권한 SQL을 다시 실행하면 `authenticated` 권한이 다시 부여될 수 있으므로 재실행하지 마세요. 메모 CRUD는 서버 함수의 로그인·소유자 검사를 계속 사용합니다.
+
+
+## 6단계: 등록한 기기만 자료실에 들어옵니다
+
+- `src/decider.mjs`는 계약에 이미 정의된 최상위 `request.deviceRegistered`만 확인합니다. 값이 정확히 `true`이면 `allow`와 `approved`를 반환하고, `false`이거나 필드가 없으면 `deny`와 `device_not_registered`를 반환합니다.
+- 규칙 ID는 `device_registered`입니다. `decide(request)`의 이름·인자와 응답의 다섯 필드는 유지했습니다. 브라우저 화면, 자료실 URL, 로그인·자료 CRUD API는 변경하지 않았습니다.
+- 이 규칙은 판정기용 방어 규칙입니다. 실제 기기 등록 시스템이나 브라우저 장치 증명을 새로 구현한 것은 아닙니다. 운영 엔진이 출처를 확인해 전달한 등록 상태만 사용하며 인증서·CA·서명 키·개인키를 새로 만들거나 저장하지 않습니다.
+
+### 6단계 확인
+
+```sh
+npm run decider:test
+```
+
+가상 시험에서 등록 기기 요청은 통과하고, 미등록 요청과 등록 상태 필드가 빠진 요청은 모두 `deny · device_not_registered`로 나와야 합니다. 이 명령은 가상 요청 연습이며 운영 심판의 판정은 아닙니다. 제출 JSON을 만들 때는 커밋 후 깨끗한 작업 트리에서 `npm run bundle`을 실행합니다.
 
 ## 확인 및 제출
 
@@ -52,6 +67,7 @@ npm run test:r5
 npm run test:stage3
 npm run test:stage4
 npm run test:stage5
+npm run decider:test
 npm run test:package
 npm run build
 ```
@@ -64,4 +80,4 @@ npm run build
 - `/aleph.json`이 열리고 단계가 5이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
 - 브라우저의 메모 CRUD 요청은 `/api/notes` 경로만 사용합니다. Auth 호출은 이번 단계에서 변경하지 않았습니다.
 
-제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
+6단계에서 `npm run decider:test`는 등록·미등록·등록 상태 누락을 가상 요청으로 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
