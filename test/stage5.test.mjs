@@ -17,15 +17,17 @@ test('browser sends memory CRUD through Vercel API routes and keeps Auth SDK cal
   assert.doesNotMatch(html, /\/rest\/v1\/training_notes/u);
 });
 
-test('server functions preserve validated owner checks for all CRUD handlers', async () => {
+test('server APIs enforce stage 8 default-deny resource scope and retain owner checks', async () => {
   const collection = await read('../api/notes.js');
   const item = await read('../api/notes/[id].js');
+  const decider = await read('../src/decider.mjs');
   const runtime = await read('../src/notes-runtime.mjs');
   assert.match(collection, /authenticateStudent/u);
-  assert.match(collection, /\.eq\('owner_id', context\.identity\.userId\)/u);
-  assert.match(collection, /owner_id: context\.identity\.userId/u);
+  assert.match(collection, /RESOURCE_SCOPE_REQUIRED/u);
   assert.match(item, /authenticateStudent/u);
+  assert.match(item, /isProvisionedNoteRequest\(request\.method, id\)/u);
   assert.match(item, /\.eq\('id', id\)\.eq\('owner_id', context\.identity\.userId\)/u);
+  assert.match(decider, /PROVISIONED_NOTE_API_ID/u);
   assert.match(runtime, /process\.env\.SUPABASE_SECRET_KEY/u);
   assert.doesNotMatch(runtime, /SUPABASE_PUBLISHABLE_KEY/u);
 });
@@ -41,11 +43,8 @@ test('stage 5 source URL is query-free HTTPS and route allowlist is present', as
   assert.equal(source.pathname, '/rest/v1/training_notes');
   assert.ok(Array.isArray(config.allowedRoutes) && config.allowedRoutes.length > 0);
   assert.deepEqual(config.allowedRoutes, [
-    'GET /api/notes',
-    'POST /api/notes',
     'GET /api/notes/:id',
     'PUT /api/notes/:id',
-    'DELETE /api/notes/:id',
     'GET /api/announcements/:id',
     'PUT /api/announcements/:id',
     'GET /api/notices/:id',
