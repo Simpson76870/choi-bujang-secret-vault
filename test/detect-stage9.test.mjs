@@ -36,7 +36,7 @@ test('discards untrusted or malformed virtual events instead of guessing', () =>
     { ...valid, subjectId: '' },
     { ...valid, method: 'FETCH' },
     { ...valid, decision: 'maybe' },
-    { ...valid, network: 'banana' },
+    { ...valid, method: undefined, network: 'banana' },
     { ...valid, at: 'not-a-time' },
     { ...valid, at: '2026-10-01' },
     null,
