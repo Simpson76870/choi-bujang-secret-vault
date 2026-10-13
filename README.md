@@ -1,7 +1,30 @@
-# BYTE BACK 방어전 시작 틀 — 8단계 저장점
+# BYTE BACK 방어전 시작 틀 — 9단계 저장점
 
 이 저장소는 자료 보호 실습용입니다. 화면과 데이터베이스에는 가상 학습 메모만 사용하세요. 실제 개인정보, 토큰, 비밀번호 또는 서버 전용 키를 코드·Git·로그·제출 묶음에 넣지 마세요.
 
+## 9단계 저장점: 도플갱어를 찾고 권한을 거둡니다
+
+- 기존 로그인, 본인 메모 CRUD, 6·7단계 기기/추가 확인, 8단계 자원 구역 검사는 보존합니다.
+- 기존 `detect(events)`는 `docs/DETECT_EVENTS.md`의 원래 세 필드 계약을 유지합니다. 새 `readDetectionEvents(events)`는 별도 로컬 가상 사건의 타임스탬프, 가명 주체 ID, 16자리 기기 ID, 메서드, 판정, 네트워크, 출처만 복사합니다. 본문, 토큰, 실명, 헤더와 임의 필드는 결과에 포함하지 않습니다.
+- `detectDeviceAnomaly(events)`는 **같은 가명 주체·같은 기기**의 허용된 GET이 연속된 10분 창에서 120건을 초과하고 그 창 안에 `network: 'unusual'`이 하나 이상 있을 때만 의심을 표시합니다. 지역 하나만으로 탐지하지 않고, 다른 사용자·다른 기기·쓰기/거부 요청·정상 네트워크·10분 창 밖 사건을 합산하지 않습니다.
+- `detectDeviceEvents(events)`는 의심 사건에 `{ action: 'propose_revocation', reasonCode: 'burst_read', subject, deviceId }`라는 별도 제안을 내고, 그 밖에는 `{ action: 'observe' }`를 반환합니다. 제안은 검증된 가상 기기 한 개만 대상으로 하며 `decide(request)`의 다섯 필드 응답을 변경하지 않습니다.
+- 이 입력은 명시적으로 `source: 'local_virtual_fixture'`인 로컬 가상 사건입니다. 실제 엔진의 기본 세 필드 사건에는 기기·네트워크가 없으므로, 운영 사건 전달·실제 권한 회수·첫 의심 요청부터의 경과 시간은 미실행이며 심판/운영 엔진 확인 대상입니다. 회수 API 호출이나 기기 권한 변경은 구현하지 않았습니다.
+
+재현:
+
+```sh
+npm run detect:test
+npm run test:stage9
+npm run decider:test
+npm run test:stage4
+npm run test:stage5
+npm run test:stage8
+npm run test:package
+npm run build
+npm run bundle
+```
+
+제출 묶음의 HTTP 관찰 결과는 실제 공개 배포에 전송한 요청만 기록합니다. 로컬 탐지 테스트의 성공을 운영 회수 완료나 심판 통과로 보고하지 않습니다.
 ## 현재 동작
 
 - Supabase Auth 이메일·비밀번호 계정 생성, 로그인, 세션 복원, 로그아웃을 지원합니다.
@@ -36,7 +59,7 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 
 ## 5단계: 자료 요청을 서버 한곳으로 모읍니다
 
-- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 8입니다.
+- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 9입니다.
 - `originalApiUrl`은 쿼리 문자열이 없는 원본 Data API 경로 `https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes`입니다.
 - `vercel.json`은 첫 HTML 응답에 `X-Content-Type-Options: nosniff`, `Content-Security-Policy` 등 보안 헤더를 설정합니다.
 - `supabase/stage5-training-notes-direct-access.sql`의 권한 회수문은 현재 학습용 Supabase DB에 적용했습니다. 적용 후 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE 유효 권한이 모두 `false`이고, `service_role`의 서버 권한은 유지되는 것을 직접 조회해 확인했습니다. 다른 테이블은 건드리지 않습니다.
@@ -118,7 +141,7 @@ npm run build
 - 시크릿 창에서 로그인하지 않은 상태로 `GET /api/notes`와 `GET /api/notes/:id`를 요청하면 JSON 오류와 HTTP 401이 반환됩니다.
 - A는 본인 메모를 읽고 추가·수정·삭제할 수 있고, B는 A의 메모를 읽거나 변경·삭제할 수 없어야 합니다. Stage 4/5 자동 테스트는 별도 가상 A/B ID를 사용해 소유자 검사를 검증하지만, 실제 배포의 A/B 로그인 세션 검증은 두 테스트 계정으로 별도 수행해야 합니다.
 - 공개 키만으로 원본 Data API를 호출해도 데이터가 반환되지 않는지 확인합니다. DB 권한 조회에서는 `anon`·`authenticated`의 메모 테이블 직접 CRUD가 모두 거부되는 것을 확인했습니다.
-- `/aleph.json`이 열리고 단계가 8이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
+- `/aleph.json`이 열리고 단계가 9이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
 - 브라우저의 메모 CRUD 요청은 `/api/notes` 경로만 사용합니다. Auth 호출은 이번 단계에서 변경하지 않았습니다.
 
 8단계에서 `npm run decider:test`는 제공된 본인 메모 fixture와 다른 주체·반·프로젝트·기기·자원 경로의 거부를 기본 설정 그대로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.

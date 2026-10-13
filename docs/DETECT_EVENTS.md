@@ -9,3 +9,35 @@
 같은 `identity.sub`의 `GET` 사건이 어느 10분 구간에서든 **120건을 넘을 때만** `{ action: 'propose_revocation', reasonCode: 'burst_read', subject: '해당 sub' }`를 돌려줍니다. 그 밖에는 `{ action: 'observe' }`입니다. 정확히 120건은 회수 제안 대상이 아닙니다. 다른 사용자의 사건을 합산하거나 10분 밖의 사건을 같은 묶음으로 세지 않습니다.
 
 이 파일의 사건 모양은 **로컬 연습용**입니다. 브라우저가 보낸 사용자 번호를 신원으로 취급하지 않습니다. 운영 반 엔진이 검증한 사건을 전달하고 회수 제안을 집행하는 경로는 별도로 연결·시험해야 합니다. 이 명령의 통과를 실제 접속 차단이나 심판 판정으로 표시하지 않습니다.
+
+## 별도 로컬 가상 기기 사건 계약
+
+기존 `detect(events)`의 세 항목 계약은 그대로 유지합니다. 요청에서 요구하는 기기·네트워크 조합은 운영 엔진 계약에 없는 정보이므로, 아래 필드가 모두 있는 명시적인 로컬 가상 사건을 별도 입력으로 처리합니다.
+
+```js
+{
+  at: '2026-10-01T00:00:00.000Z',
+  subjectId: 'learner_fixture',
+  deviceId: 'aaaaaaaaaaaaaaaa',
+  method: 'GET',
+  decision: 'allow',
+  network: 'unusual',
+  source: 'local_virtual_fixture'
+}
+```
+
+`readDetectionEvents(events)`는 이 필드만 읽고 동일한 필드만 가진 새 객체를 돌려줍니다. 허용되지 않은 source, 잘못된 UTC 시각, 알 수 없는 가명/기기 형식, HTTP 메서드, 판정 또는 네트워크 값은 추측해 보정하지 않고 해당 사건을 제외합니다. `body`, 토큰, 실명, 헤더 및 그 밖의 추가 속성은 결과에 복사하거나 출력하지 않습니다.
+
+이 확장 계약은 **로컬 가상 사건용**이며, 실제 엔진이 기기나 네트워크를 제공한다는 의미는 아닙니다. 운영 입력에서는 엔진이 보증한 사건과 별도 권한이 필요합니다.
+
+## 복합 탐지와 별도 회수 제안
+
+`detectDeviceAnomaly(events)`는 같은 `subjectId`와 `deviceId`의 허용된 `GET`만 세며, 동일한 연속 10분 창 안에 120건을 초과하고 그 창에 `network: 'unusual'`이 하나 이상 있을 때에만 `{ suspicious: true, reasonCode: 'burst_read', subject, deviceId }`를 반환합니다. 지역만 다른 사건은 조건이 아닙니다. 정상 네트워크, 정확히 120건, 거부/추가 확인/쓰기 요청, 사용자 또는 기기가 서로 다른 조회, 창 밖 사건은 탐지하지 않습니다.
+
+`detectDeviceEvents(events)`는 이 후보 결과를 별도 회수 제안으로 표현합니다:
+
+```js
+{ action: 'propose_revocation', reasonCode: 'burst_read', subject: 'learner_fixture', deviceId: 'aaaaaaaaaaaaaaaa' }
+```
+
+정상 사건은 `{ action: 'observe' }`를 반환합니다. 제안에는 검증된 가상 기기 한 개만 포함됩니다. 이 함수는 접속 판정 응답의 다섯 필드를 수정하지 않고, 어떤 API도 호출하지 않으며, 기기 등록/권한을 변경하지 않습니다. 실제 회수와 첫 의심 요청부터의 경과 시간은 제공된 심판/운영 엔진이 별도로 확인해야 하며, 로컬 테스트 통과는 그 증거가 아닙니다.
