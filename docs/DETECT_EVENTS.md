@@ -32,7 +32,7 @@
 
 ## 복합 탐지와 별도 회수 제안
 
-`detectDeviceAnomaly(events)`는 같은 `subjectId`와 `deviceId`의 허용된 `GET`만 세며, 동일한 연속 10분 창 안에 120건을 초과하고 그 창에 `network: 'unusual'`이 하나 이상 있을 때에만 `{ suspicious: true, reasonCode: 'burst_read', subject, deviceId }`를 반환합니다. 지역만 다른 사건은 조건이 아닙니다. 정상 네트워크, 정확히 120건, 거부/추가 확인/쓰기 요청, 사용자 또는 기기가 서로 다른 조회, 창 밖 사건은 탐지하지 않습니다.
+`detectDeviceAnomaly(events)`는 같은 `subjectId`와 `deviceId`의 허용된 `GET`만 조회 건수로 세며, 동일한 연속 10분 창 안에 120건을 초과하고 그 창에 유효한 `network: 'unusual'` 사건이 하나 이상 있을 때에만 `{ suspicious: true, reasonCode: 'burst_read', subject, deviceId }`를 반환합니다. 비정상 네트워크 신호는 같은 주체·기기의 다른 유효 로그에 기록될 수 있으며, 로그의 `network` 또는 `signals.network`에서 읽습니다. 비정상 네트워크 로그가 조회가 아니거나 거부된 요청이어도 조회 횟수로 세지는 않지만, 복합 조건의 네트워크 근거로만 사용할 수 있습니다. 지역만 다른 사건은 조건이 아닙니다. 정상 네트워크, 정확히 120건, 거부/추가 확인/쓰기 요청, 사용자 또는 기기가 서로 다른 조회, 창 밖 사건은 탐지하지 않습니다.
 
 `detectDeviceEvents(events)`는 이 후보 결과를 별도 회수 제안으로 표현합니다:
 

@@ -18,25 +18,35 @@ function parseTime(value) {
 function readOneDetectionEvent(event) {
   if (!event || typeof event !== 'object' || Array.isArray(event)
       || (event.source !== undefined && !ALLOWED_SOURCES.has(event.source))
-      || typeof event.at !== 'string'
-      || typeof (event.subjectId ?? event.identity?.sub) !== 'string'
-      || !SUBJECT_ID.test(event.subjectId ?? event.identity.sub)
+      || typeof event.at !== 'string') return null;
+
+  const subjectId = event.subjectId ?? event.identity?.sub;
+  const signals = event.signals;
+  // The network signal may be recorded alongside the access log or in the
+  // engine's verified signals object. Only this single property is read.
+  const network = event.network ?? (
+    signals && typeof signals === 'object' && !Array.isArray(signals)
+      ? signals.network
+      : undefined
+  );
+  if (typeof subjectId !== 'string' || !SUBJECT_ID.test(subjectId)
       || typeof event.deviceId !== 'string' || !DEVICE_ID.test(event.deviceId)
       || !METHODS.has(event.method)
       || !DECISIONS.has(event.decision)
-      || !NETWORKS.has(event.network)) return null;
+      || !NETWORKS.has(network)) return null;
 
   const time = parseTime(event.at);
   if (time === null) return null;
 
-  // Copy only the explicit contract keys. Never retain body, token, name, or headers.
+  // Copy only the explicit contract keys. Never retain body, token, name, headers,
+  // or unrelated fields from the nested signals object.
   return Object.freeze({
     at: event.at,
-    subjectId: event.subjectId ?? event.identity.sub,
+    subjectId,
     deviceId: event.deviceId,
     method: event.method,
     decision: event.decision,
-    network: event.network,
+    network,
     source: event.source ?? LOCAL_EVENT_SOURCE,
   });
 }
@@ -82,24 +92,40 @@ export function detect(events) {
 export function detectDeviceAnomaly(events) {
   const parsed = readDetectionEvents(events);
   const groups = new Map();
+
+  // Read volume and network anomaly are separate signals: count only allowed
+  // GETs, but retain any valid unusual-network event for the same verified
+  // subject/device pair so a separate network log can complete the pattern.
   for (const event of parsed) {
-    if (event.method !== 'GET' || event.decision !== 'allow') continue;
+    const isAllowedRead = event.method === 'GET' && event.decision === 'allow';
+    const isUnusualNetwork = event.network === 'unusual';
+    if (!isAllowedRead && !isUnusualNetwork) continue;
+
     const key = JSON.stringify([event.subjectId, event.deviceId]);
-    if (!groups.has(key)) groups.set(key, { subject: event.subjectId, deviceId: event.deviceId, items: [] });
-    groups.get(key).items.push({ at: Date.parse(event.at), unusual: event.network === 'unusual' });
+    if (!groups.has(key)) {
+      groups.set(key, { subject: event.subjectId, deviceId: event.deviceId, items: [] });
+    }
+    groups.get(key).items.push({
+      at: Date.parse(event.at),
+      isAllowedRead,
+      isUnusualNetwork,
+    });
   }
 
   for (const { subject, deviceId, items } of groups.values()) {
     items.sort((a, b) => a.at - b.at);
     let start = 0;
+    let readCount = 0;
     let unusualCount = 0;
     for (let end = 0; end < items.length; end++) {
-      unusualCount += Number(items[end].unusual);
+      readCount += Number(items[end].isAllowedRead);
+      unusualCount += Number(items[end].isUnusualNetwork);
       while (items[end].at - items[start].at >= WINDOW_MS) {
-        unusualCount -= Number(items[start].unusual);
+        readCount -= Number(items[start].isAllowedRead);
+        unusualCount -= Number(items[start].isUnusualNetwork);
         start++;
       }
-      if (end - start + 1 > READ_LIMIT && unusualCount > 0) {
+      if (readCount > READ_LIMIT && unusualCount > 0) {
         return { suspicious: true, reasonCode: 'burst_read', subject, deviceId };
       }
     }

@@ -83,6 +83,38 @@ test('keeps normal volume and normal network as non-suspicious', () => {
   assert.deepEqual(detectDeviceAnomaly(reads(121, { network: 'usual' })), { suspicious: false });
 });
 
+test('combines allowed-read volume with a separate unusual-network log for the same device', () => {
+  const normalReads = reads(121, { network: 'usual' });
+  const separateNetworkSignal = {
+    ...reads(1, {
+      method: 'POST',
+      decision: 'deny',
+      network: 'unusual',
+      start: START + 1,
+      source: 'engine_verified',
+    })[0],
+  };
+  assert.deepEqual(detect([...normalReads, separateNetworkSignal]), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+});
+
+test('accepts the verified network signal nested under signals.network', () => {
+  const nestedSignals = reads(121).map(({ network, ...event }) => ({
+    ...event,
+    signals: { network },
+  }));
+  assert.deepEqual(detect(nestedSignals), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+});
+
 test('only allowed GET events count toward the compound pattern', () => {
   assert.deepEqual(detectDeviceAnomaly(reads(121, { method: 'PUT' })), { suspicious: false });
   assert.deepEqual(detectDeviceAnomaly(reads(121, { decision: 'deny' })), { suspicious: false });
