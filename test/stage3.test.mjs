@@ -66,8 +66,46 @@ test('verify-login accepts only claims returned by Supabase verification', async
   assert.equal(await verifier(undefined), null);
   assert.equal(await verifier('Basic abc'), null);
   const accessToken = token({ iss: studentIssuer, sub: userId });
-  assert.deepEqual(await verifier('Bearer ' + accessToken), { kind: 'student', userId });
+  assert.deepEqual(await verifier('Bearer ' + accessToken), { kind: 'student', userId, isInstructor: false });
   assert.deepEqual(calls, [accessToken]);
+});
+
+
+test('only verified server-managed app_metadata grants instructor capability', async () => {
+  const scenarios = [
+    { app_metadata: { role: 'instructor' }, user_metadata: { role: 'student' }, isInstructor: true },
+    { app_metadata: { role: 'student' }, user_metadata: { role: 'instructor' }, isInstructor: false },
+    { user_metadata: { role: 'instructor' }, isInstructor: false },
+  ];
+  for (const scenario of scenarios) {
+    const supabaseClient = {
+      auth: {
+        async getClaims() {
+          return {
+            data: { claims: {
+              iss: studentIssuer,
+              aud: 'authenticated',
+              role: 'authenticated',
+              sub: userId,
+              exp: Math.floor(Date.now() / 1000) + 300,
+              app_metadata: scenario.app_metadata,
+              user_metadata: scenario.user_metadata,
+            } },
+            error: null,
+          };
+        },
+      },
+    };
+    const verifier = createLoginVerifier({
+      config: appConfig,
+      supabaseClient,
+      judgeKeySet: () => undefined,
+    });
+    const accessToken = token({ iss: studentIssuer, sub: userId });
+    assert.deepEqual(await verifier('Bearer ' + accessToken), {
+      kind: 'student', userId, isInstructor: scenario.isInstructor,
+    });
+  }
 });
 
 test('unauthenticated collection and item APIs return JSON 401 responses', async () => {

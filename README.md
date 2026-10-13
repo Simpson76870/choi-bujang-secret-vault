@@ -78,10 +78,10 @@ npm run decider:test
 
 ## 8단계 저장점: 자료마다 갈 수 있는 구역을 나눕니다
 
-- 판정기에서 자료별 자원 ID를 분리합니다. 본인 메모 fixture는 `notes:demo`이며 `class_fixture` / `project_fixture` / `learner_fixture` / 기기 `aaaaaaaaaaaaaaaa` 조합에 GET/PUT만 허용합니다. 강사 공지 fixture는 별도 ID `announcements:demo`이며 `instructor_fixture`와 등록 기기 `bbbbbbbbbbbbbbbb` 조합에 PUT만 허용합니다. 호환 경로 `/notices/demo`에도 별도 ID `notices:demo`를 두되, 동일한 강사·기기 범위에서 PUT만 허용합니다.
+- 판정기에서 자료별 자원 ID를 분리합니다. 본인 메모 fixture는 `notes:demo`이며 `class_fixture` / `project_fixture` / `learner_fixture` / 기기 `aaaaaaaaaaaaaaaa` 조합에 GET/PUT만 허용합니다. 계약 v1에는 강사 역할·공지 편집권한 증명이 없으므로 판정기는 공지 및 `notices` 수정 요청을 기본 거부합니다. 실제 공지 API는 검증된 서버 관리 강사 권한과 DB 소유자 일치를 별도로 확인합니다.
 - 판정은 엔진이 확인한 `classId`·`projectId`·`subjectId`·`deviceId`·`service`·`method`·정확한 `path`·`route`를 대조합니다. 브라우저가 보낸 사용자 ID나 역할을 사용하지 않습니다. 다른 주체·반·프로젝트·기기·서비스·자원 ID, 쿼리 선택, `export` 같은 추가 경로는 기본 거부합니다.
 - 실제 메모 API는 로그인 토큰에서 서버가 검증한 Supabase 사용자 ID를 사용합니다. 목록 조회는 `owner_id`를 필터링하고, 새 메모의 소유자는 서버에서 지정하며, 단건 GET/PUT/DELETE는 URL의 메모 ID와 검증된 소유자 ID를 함께 비교합니다. 쿼리 문자열의 `id`는 자원 선택에 사용하지 않습니다.
-- 강사 공지는 `training_announcements` 테이블의 별도 UUID 자원입니다. 공개된 공지는 읽을 수 있지만, 미공개 초안은 해당 강사만 읽을 수 있습니다. 수정은 저장된 `instructor_id`와 인증된 사용자 ID가 일치할 때만 가능하고 UPDATE 조건에서도 강사 ID를 다시 확인합니다. 요청 본문의 `role`이나 `instructor_id`는 신뢰하지 않습니다.
+- 강사 공지는 `training_announcements` 테이블의 별도 UUID 자원입니다. 공개된 공지는 읽을 수 있지만, 미공개 초안은 검증된 강사 권한(`app_metadata.role === 'instructor'`)과 저장된 `instructor_id`가 모두 일치하는 경우에만 읽을 수 있습니다. 수정도 두 조건을 모두 확인하고 UPDATE 조건에서 강사 ID를 다시 비교합니다. `user_metadata.role`, 요청 본문의 `role`, `instructor_id`는 권한으로 신뢰하지 않습니다. Supabase 관리자가 해당 사용자의 `app_metadata.role`을 `instructor`로 설정하지 않은 경우 공지 수정은 기본 거부됩니다.
 - `/api/announcements/:id`와 `/api/notices/:id`는 동일한 강사 권한 검사를 사용합니다. 두 경로 모두 ID는 URL 경로에서 읽으며 쿼리 파라미터로 자원을 바꿀 수 없습니다.
 - `supabase/stage8-training-announcements.sql`은 기존 메모 테이블을 바꾸지 않고 별도 공지 테이블을 만듭니다. `anon`·`authenticated`의 직접 접근을 회수하며, 실제 API는 서버 측 권한 검사 후 서버 전용 키로 조회·수정합니다.
 

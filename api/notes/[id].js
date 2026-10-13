@@ -52,11 +52,11 @@ export function createItemHandler(authenticate = authenticateStudent) {
       try {
         const { data, error } = await context.supabase
           .from('training_notes')
-          .select('id,title,content')
+          .select('id,title,content,owner_id')
           .eq('id', id).eq('owner_id', context.identity.userId)
           .maybeSingle();
         if (error) return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
-        if (!data) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        if (!data || data.owner_id !== context.identity.userId) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
         return response.status(200).json(present(data));
       } catch {
         return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
@@ -73,11 +73,22 @@ export function createItemHandler(authenticate = authenticateStudent) {
         });
       }
       try {
+        const { data: current, error: ownerError } = await context.supabase
+          .from('training_notes')
+          .select('id,owner_id')
+          .eq('id', id).eq('owner_id', context.identity.userId)
+          .maybeSingle();
+        if (ownerError) return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
+        if (!current || current.owner_id !== context.identity.userId) {
+          return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        }
+
+        // Never update owner_id from this code path; ownership is immutable here.
         const { data, error } = await context.supabase
           .from('training_notes')
-          .update({ owner_id: context.identity.userId, title: input.title.trim(), content: input.body })
+          .update({ title: input.title.trim(), content: input.body })
           .eq('id', id).eq('owner_id', context.identity.userId)
-          .select('id,title,content')
+          .select('id,title,content,owner_id')
           .maybeSingle();
         if (error?.code === '23505') {
           return response.status(409).json({
@@ -86,7 +97,9 @@ export function createItemHandler(authenticate = authenticateStudent) {
           });
         }
         if (error) return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
-        if (!data) return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        if (!data || data.owner_id !== context.identity.userId) {
+          return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+        }
         return response.status(200).json(present(data));
       } catch {
         return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
@@ -94,13 +107,24 @@ export function createItemHandler(authenticate = authenticateStudent) {
     }
 
     try {
+      const { data: current, error: ownerError } = await context.supabase
+        .from('training_notes')
+        .select('id,owner_id')
+        .eq('id', id).eq('owner_id', context.identity.userId)
+        .maybeSingle();
+      if (ownerError) return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
+      if (!current || current.owner_id !== context.identity.userId) {
+        return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
+      }
+
       const { data, error } = await context.supabase
         .from('training_notes')
         .delete()
         .eq('id', id).eq('owner_id', context.identity.userId)
-        .select('id');
+        .select('id,owner_id');
       if (error) return response.status(503).json({ error: 'NOTES_UNAVAILABLE' });
-      if (!Array.isArray(data) || data.length === 0) {
+      if (!Array.isArray(data) || data.length === 0
+          || data.some(note => note?.owner_id !== context.identity.userId)) {
         return response.status(404).json({ error: 'NOTE_NOT_FOUND' });
       }
       return response.status(200).json({ id, deleted: true });

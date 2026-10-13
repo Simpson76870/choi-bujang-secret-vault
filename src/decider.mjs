@@ -11,30 +11,6 @@ const starterResources = Object.freeze([
     resourceId: 'notes:demo',
     permissions: Object.freeze(['GET', 'PUT']),
   }),
-  Object.freeze({
-    classId: 'class_fixture',
-    projectId: 'project_fixture',
-    subjectId: 'instructor_fixture',
-    ownerSubjectId: 'instructor_fixture',
-    deviceId: 'bbbbbbbbbbbbbbbb',
-    service: 'announcements',
-    path: '/announcements/demo',
-    resourceId: 'announcements:demo',
-    instructor: true,
-    permissions: Object.freeze(['PUT']),
-  }),
-  Object.freeze({
-    classId: 'class_fixture',
-    projectId: 'project_fixture',
-    subjectId: 'instructor_fixture',
-    ownerSubjectId: 'instructor_fixture',
-    deviceId: 'bbbbbbbbbbbbbbbb',
-    service: 'notices',
-    path: '/notices/demo',
-    resourceId: 'notices:demo',
-    instructor: true,
-    permissions: Object.freeze(['PUT']),
-  }),
 ]);
 const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const RESOURCE_SCOPE_RULE = 'resource_scope';
@@ -95,6 +71,9 @@ export function resourceAllowed(request, bindings = starterResources) {
     : request.service === 'announcements' ? 'announcements'
     : null;
   if (!family) return false;
+  // The v1 contract does not attest instructor roles or per-resource editor grants.
+  // Until an operator-provisioned signed grant exists, announcement writes fail closed.
+  if (family !== 'notes') return false;
 
   const segments = request.path.slice(1).split('/');
   if (segments.length < 1 || segments.length > 2 || segments.some(segment => !segment)) return false;
@@ -117,9 +96,7 @@ export function resourceAllowed(request, bindings = starterResources) {
     && entry.resourceId === resourceId
     && Array.isArray(entry.permissions)
     && entry.permissions.includes(request.method)
-    && (family !== 'notes' || entry.ownerSubjectId === request.subjectId)
-    && (family !== 'notices' || request.method !== 'PUT' || entry.instructor === true)
-    && (family !== 'announcements' || request.method !== 'PUT' || entry.instructor === true)
+    && entry.ownerSubjectId === request.subjectId
   );
 }
 
