@@ -20,8 +20,8 @@ function validResponse(request, response, ruleIds) {
 // Local practice only. The class engine and the server judge validate live requests separately.
 export async function checkDecider({ decide, ruleIds }) {
   if (typeof decide !== 'function' || !Array.isArray(ruleIds)
-      || !ruleIds.includes('device_registered')) {
-    throw new Error('6단계 device_registered 규칙을 먼저 구현하고 RULE_IDS에 적어 주세요.');
+      || (!ruleIds.includes('device_registered') || !ruleIds.includes('step_up_required'))) {
+    throw new Error('7단계 device_registered 및 step_up_required 규칙을 RULE_IDS에 구현해 주세요.');
   }
   const { normal, suspicious } = fixtureRequests();
   const unregistered = { ...normal, requestId: randomUUID(), deviceRegistered: false };
@@ -36,10 +36,16 @@ export async function checkDecider({ decide, ruleIds }) {
   ];
   if (ruleIds.includes('step_up_required')) {
     checks.push(
-      { name: '복합 이상 접속', request: suspicious, decision: 'step_up',
+      { name: '복합 이상 접속은 추가 확인', request: suspicious, decision: 'step_up',
         reasonCode: 'step_up_required' },
-      { name: '다시 확인한 복합 이상 접속', request: { ...suspicious,
+      { name: '새 로그인 시각이 확인된 뒤 재판정', request: { ...suspicious,
         requestId: randomUUID(), stepUp: { verified: true, authAgeSeconds: 60 } },
+      decision: 'allow' },
+      { name: '출처가 클라이언트 헤더인 신호는 신뢰하지 않음', request: { ...normal,
+        requestId: randomUUID(), signals: { ...normal.signals, source: 'client_header' } },
+      decision: 'step_up', reasonCode: 'step_up_required' },
+      { name: '지역만 다른 정상 조합은 차단하지 않음', request: { ...normal,
+        requestId: randomUUID(), signals: { ...normal.signals, region: 'foreign' } },
       decision: 'allow' },
     );
   }

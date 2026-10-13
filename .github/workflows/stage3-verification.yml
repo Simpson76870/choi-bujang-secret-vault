@@ -1,4 +1,4 @@
-name: Stage 6 verification
+name: Stage 7 verification
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - stage4-owner-check
       - stage5-server-only-data-access
       - stage6-registered-device
+      - stage7-risk-based-step-up
   pull_request:
     branches:
       - main
@@ -16,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-stage6:
+  verify-stage7:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -61,7 +62,7 @@ jobs:
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
-              && [ "$manifest_status" = "200" ] && grep -q '"step": 6' /tmp/aleph-response.json \
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 7' /tmp/aleph-response.json \
               && grep -q "\"commit\": \"$expected_runtime_sha\"" /tmp/aleph-response.json; then
               echo "Unauthenticated API returned JSON 401; /aleph.json matches runtime-source commit $expected_runtime_sha (workflow commit $GITHUB_SHA)."
               ready=1
@@ -77,12 +78,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate stage 6 submission JSON
+      - name: Generate stage 7 submission JSON
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           ALEPH_CHANGED_FILES_BASE: 8f2aed503f1f8cc1387730ee206e2e51d4e77b3f
         run: |
-          printf '%s\n' '{"explanation":"6단계: 판정기에서 deviceRegistered가 정확히 true인 요청만 허용하고, false 또는 누락은 device_not_registered로 거부합니다. 브라우저 화면과 자료 CRUD 경로는 유지하며, 인증서·CA·서명 키는 만들지 않습니다."}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"7단계: 신뢰할 수 없는/누락된 접속 신호와 최근 사건은 정상값으로 채우지 않고 추가 확인을 요구합니다. 비정상 시간대·다른 네트워크·최근 다량 활동의 복합 가상 사건은 step_up_required이며 지역 하나만으로 차단하지 않습니다.","blockedAt":"실제 운영 재로그인 시각 검증 및 그 전후 자료 차단/재허용은 미실측; decider:test는 가상 요청"}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
@@ -94,22 +95,22 @@ jobs:
           import { readFileSync } from 'node:fs';
           const bundle = JSON.parse(readFileSync('artifacts/submission.json', 'utf8'));
           assert.equal(bundle.schema, 'aleph.defense.submission.v2');
-          assert.equal(bundle.step, 6);
+          assert.equal(bundle.step, 7);
           const observed = new Map(bundle.attackAttempts.map(item => [item.attackId, item.observed]));
           assert.match(observed.get('homepage_security_header') ?? '', /보안 헤더/u);
           assert.match(observed.get('anonymous_notes_list') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('anonymous_note_item') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
-          assert.match(observed.get('deployment_manifest') ?? '', /단계 6/u);
+          assert.match(observed.get('deployment_manifest') ?? '', /단계 7/u);
           assert.match(observed.get('anonymous_direct_data_api') ?? '', /anon direct Data API는 권한 오류로 거부함/u);
-          console.log('6단계 실배포 검사 여섯 항목이 모두 기대한 결과를 냈습니다.');
+          console.log('7단계 실배포 검사 여섯 항목이 모두 기대한 결과를 냈습니다.');
           NODE
 
-      - name: Upload stage 6 submission JSON
+      - name: Upload stage 7 submission JSON
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: stage6-submission
+          name: stage7-submission
           path: artifacts/submission.json
           if-no-files-found: warn
           retention-days: 14
