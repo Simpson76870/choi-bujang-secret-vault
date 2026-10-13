@@ -1,4 +1,4 @@
-name: Stage 5 verification
+name: Stage 6 verification
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - stage3-auth-crud
       - stage4-owner-check
       - stage5-server-only-data-access
+      - stage6-registered-device
   pull_request:
     branches:
       - main
@@ -15,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-stage5:
+  verify-stage6:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,7 +35,7 @@ jobs:
         run: npm ci
 
       - name: Run unit and package tests
-        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:stage5 && npm run test:package
+        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:stage5 && npm run decider:test && npm run test:package
 
       - name: Build deployment identity manifest
         env:
@@ -60,7 +61,7 @@ jobs:
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
-              && [ "$manifest_status" = "200" ] && grep -q '"step": 5' /tmp/aleph-response.json \
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 6' /tmp/aleph-response.json \
               && grep -q "\"commit\": \"$expected_runtime_sha\"" /tmp/aleph-response.json; then
               echo "Unauthenticated API returned JSON 401; /aleph.json matches runtime-source commit $expected_runtime_sha (workflow commit $GITHUB_SHA)."
               ready=1
@@ -76,12 +77,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate stage 5 submission JSON
+      - name: Generate stage 6 submission JSON
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           ALEPH_CHANGED_FILES_BASE: 8f2aed503f1f8cc1387730ee206e2e51d4e77b3f
         run: |
-          printf '%s\n' '{"explanation":"5단계: 메모 CRUD는 Vercel 서버 함수로 모으고, 검증된 소유자 검사를 유지합니다. 원본 Data API 경로는 쿼리 없이 기록하며, training_notes의 PUBLIC·anon·authenticated 직접 권한 회수 SQL을 제안합니다. SQL은 학습 DB에 별도 검토 후 적용해야 합니다."}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"6단계: 판정기에서 deviceRegistered가 정확히 true인 요청만 허용하고, false 또는 누락은 device_not_registered로 거부합니다. 브라우저 화면과 자료 CRUD 경로는 유지하며, 인증서·CA·서명 키는 만들지 않습니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
@@ -93,22 +94,22 @@ jobs:
           import { readFileSync } from 'node:fs';
           const bundle = JSON.parse(readFileSync('artifacts/submission.json', 'utf8'));
           assert.equal(bundle.schema, 'aleph.defense.submission.v2');
-          assert.equal(bundle.step, 5);
+          assert.equal(bundle.step, 6);
           const observed = new Map(bundle.attackAttempts.map(item => [item.attackId, item.observed]));
           assert.match(observed.get('homepage_security_header') ?? '', /보안 헤더/u);
           assert.match(observed.get('anonymous_notes_list') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('anonymous_note_item') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
-          assert.match(observed.get('deployment_manifest') ?? '', /단계 5/u);
+          assert.match(observed.get('deployment_manifest') ?? '', /단계 6/u);
           assert.match(observed.get('anonymous_direct_data_api') ?? '', /anon direct Data API는 권한 오류로 거부함/u);
-          console.log('5단계 실배포 검사 여섯 항목이 모두 기대한 결과를 냈습니다.');
+          console.log('6단계 실배포 검사 여섯 항목이 모두 기대한 결과를 냈습니다.');
           NODE
 
-      - name: Upload stage 5 submission JSON
+      - name: Upload stage 6 submission JSON
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: stage5-submission
+          name: stage6-submission
           path: artifacts/submission.json
           if-no-files-found: warn
           retention-days: 14
