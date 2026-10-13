@@ -1,4 +1,4 @@
-# BYTE BACK 방어전 시작 틀 — 7단계 저장점
+# BYTE BACK 방어전 시작 틀 — 8단계 저장점
 
 이 저장소는 자료 보호 실습용입니다. 화면과 데이터베이스에는 가상 학습 메모만 사용하세요. 실제 개인정보, 토큰, 비밀번호 또는 서버 전용 키를 코드·Git·로그·제출 묶음에 넣지 마세요.
 
@@ -36,7 +36,7 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 
 ## 5단계: 자료 요청을 서버 한곳으로 모읍니다
 
-- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 7입니다.
+- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 8입니다.
 - `originalApiUrl`은 쿼리 문자열이 없는 원본 Data API 경로 `https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes`입니다.
 - `vercel.json`은 첫 HTML 응답에 `X-Content-Type-Options: nosniff`, `Content-Security-Policy` 등 보안 헤더를 설정합니다.
 - `supabase/stage5-training-notes-direct-access.sql`의 권한 회수문은 현재 학습용 Supabase DB에 적용했습니다. 적용 후 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE 유효 권한이 모두 `false`이고, `service_role`의 서버 권한은 유지되는 것을 직접 조회해 확인했습니다. 다른 테이블은 건드리지 않습니다.
@@ -75,6 +75,25 @@ npm run decider:test
 
 정상 가상 요청은 `allow`, 복합 이상 접속과 출처 불명 신호는 `step_up · step_up_required`, 새 로그인 시각이 검증된 복합 사건은 재판정에서 `allow`가 나와야 합니다. 지역만 다른 정상 조합은 허용되어야 합니다. 이 시험은 운영 심판 판정이나 실제 자료 차단의 증거가 아닙니다.
 
+
+## 8단계: 자료마다 갈 수 있는 구역을 나눕니다
+
+- `src/decider.mjs`에서 `/notes/:id`와 `/announcements/:id`는 서로 다른 이름 공간의 자원 ID로 구분합니다. 요청 계약에 새 필드를 추가하지 않고 엔진이 검증한 `path`·`route`·`method`·`subjectId`·`deviceId`를 사용합니다.
+- 허용 경로는 정해진 패턴과 일치해야 하며 쿼리 문자열, 잘못된 ID, `export` 같은 미등록 경로는 `resource_forbidden`으로 거부합니다.
+- 메모의 최종 권한은 기존 API가 DB의 `owner_id`와 로그인으로 검증한 사용자를 비교해 확인합니다. 메모 ID는 query string이 아니라 URL 경로에서만 읽습니다.
+- `GET /api/announcements/:id`는 게시된 공지를 읽을 수 있고, 미게시 공지는 해당 강사만 읽을 수 있습니다. `PUT`은 검증된 로그인 사용자 ID와 DB의 `instructor_id`가 일치할 때만 허용합니다. 본문이나 메뉴가 보낸 `role`·`instructor_id`는 권한으로 사용하지 않습니다. UPDATE 쿼리에도 `instructor_id` 조건을 적용합니다.
+- 강사 권한은 DB의 `training_announcements.instructor_id`로 확인합니다. 판정기에서 공지 수정을 허용할 강사의 엔진 가명 ID는 신뢰된 런타임 설정 `ALEPH_INSTRUCTOR_SUBJECT_IDS`에 쉼표로 구분해 설정합니다. 설정이 없으면 판정기에서 공지 수정은 기본 거부입니다.
+- `supabase/stage8-training-announcements.sql`은 별도 공지 테이블을 만들고 `anon`·`authenticated`의 직접 접근을 회수하며 서버의 `service_role` 접근만 남깁니다. 기존 메모 테이블과 내용은 변경하지 않습니다.
+
+### 8단계 확인
+
+```sh
+npm run decider:test
+npm run test:stage8
+```
+
+가상 판정에서는 정상 메모 접근이 허용되고, 일반 학생의 공지 수정 및 알 수 없는 경로는 거부되어야 합니다. API 테스트에서는 A 본인 메모는 읽고 수정할 수 있지만 B가 A의 메모를 직접 요청해도 메모가 나오지 않아야 하며, `role: "teacher"`를 위조한 일반 학생의 공지 수정도 거부되어야 합니다.
+
 ## 확인 및 제출
 
 자동 테스트:
@@ -94,7 +113,7 @@ npm run build
 - 시크릿 창에서 로그인하지 않은 상태로 `GET /api/notes`와 `GET /api/notes/:id`를 요청하면 JSON 오류와 HTTP 401이 반환됩니다.
 - A는 본인 메모를 읽고 추가·수정·삭제할 수 있고, B는 A의 메모를 읽거나 변경·삭제할 수 없어야 합니다. Stage 4/5 자동 테스트는 별도 가상 A/B ID를 사용해 소유자 검사를 검증하지만, 실제 배포의 A/B 로그인 세션 검증은 두 테스트 계정으로 별도 수행해야 합니다.
 - 공개 키만으로 원본 Data API를 호출해도 데이터가 반환되지 않는지 확인합니다. DB 권한 조회에서는 `anon`·`authenticated`의 메모 테이블 직접 CRUD가 모두 거부되는 것을 확인했습니다.
-- `/aleph.json`이 열리고 단계가 7이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
+- `/aleph.json`이 열리고 단계가 8이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
 - 브라우저의 메모 CRUD 요청은 `/api/notes` 경로만 사용합니다. Auth 호출은 이번 단계에서 변경하지 않았습니다.
 
-7단계에서 `npm run decider:test`는 등록 여부, 복합 이상 접속, 출처 불명 신호, 재로그인 후 가상 재판정을 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
+8단계에서 `npm run decider:test`는 등록 기기, 복합 이상 접속, 자원 경로, 강사 공지 수정 권한을 가상 요청으로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
