@@ -1,0 +1,89 @@
+name: Stage 8 verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run regression tests
+        run: |
+          npm run test:r5
+          npm run test:stage3
+          npm run test:stage4
+          npm run test:stage5
+          npm run decider:test
+          npm run test:stage8
+          npm run test:package
+          npm run build
+
+      - name: Wait for this commit to reach production
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          APP_URL="$(sed -n 's/^[[:space:]]*"publicAppUrl":[[:space:]]*"\([^"]*\)".*/\1/p' aleph.config.json)"
+          if [ -z "$APP_URL" ]; then
+            echo "publicAppUrl is missing from aleph.config.json"
+            exit 1
+          fi
+          for attempt in $(seq 1 36); do
+            manifest="$(curl --fail --silent --show-error --max-time 10 "$APP_URL/aleph.json" 2>/dev/null || true)"
+            deployed_sha="$(printf '%s' "$manifest" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{console.log(JSON.parse(s).commit||"")}catch{console.log("")}})')"
+            if [ "$deployed_sha" = "$EXPECTED_SHA" ]; then
+              echo "Production manifest matches $EXPECTED_SHA"
+              exit 0
+            fi
+            echo "Waiting for production deployment ($attempt/36)"
+            sleep 10
+          done
+          echo "Production manifest never matched the pushed commit."
+          exit 1
+
+      - name: Create temporary bundle notes
+        if: github.event_name == 'push'
+        run: |
+          cat > bundle-notes.json <<'JSON'
+          {
+            "explanation": "8단계 저장점: 판정기에서 본인 메모와 강사 공지 자원 구역을 분리하고, 서버 API에서 저장된 소유자와 강사 권한을 다시 검증합니다."
+          }
+          JSON
+
+      - name: Build the submission bundle from real HTTP observations
+        if: github.event_name == 'push'
+        env:
+          ALEPH_CHANGED_FILES_BASE: ${{ github.event.before }}
+        run: npm run bundle
+
+      - name: Upload submission JSON
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aleph-stage8-submission
+          path: artifacts/submission.json
+          if-no-files-found: error
+          retention-days: 7
