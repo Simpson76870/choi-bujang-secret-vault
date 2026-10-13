@@ -4,11 +4,14 @@ import { test } from 'node:test';
 
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('browser sends memory CRUD through Vercel API routes and keeps Auth SDK calls', async () => {
+test('browser requests only the provisioned note through Vercel and keeps Auth SDK calls', async () => {
   const html = await read('../public/index.html');
   assert.match(html, /async function apiRequest\(path, options = \{\}\)/u);
   assert.match(html, /fetch\(path, \{ \.\.\.options, headers, cache: 'no-store' \}\)/u);
-  assert.match(html, /apiRequest\('\/api\/notes'\)/u);
+  assert.match(html, /const PROVISIONED_NOTE_ID = '10000000-0000-4000-8000-000000000099'/u);
+  assert.match(html, /apiRequest\('\/api\/notes\/' \+ encodeURIComponent\(PROVISIONED_NOTE_ID\)\)/u);
+  assert.doesNotMatch(html, /apiRequest\('\/api\/notes',\s*\{\s*method:\s*'POST'/u);
+  assert.doesNotMatch(html, /method:\s*'DELETE'/u);
   assert.match(html, /apiRequest\('\/api\/notes\/' \+ encodeURIComponent\(id\)/u);
   assert.match(html, /supabase\.auth\.signUp/u);
   assert.match(html, /supabase\.auth\.signInWithPassword/u);
