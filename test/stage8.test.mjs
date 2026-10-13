@@ -118,6 +118,17 @@ test('announcement ID is extracted from path, not query parameter', async () => 
   assert.equal(result.response.payload.id, ANNOUNCEMENT_ID);
   assert.equal(result.supabase.queries[0].filters.find(([field]) => field === 'id')[1], ANNOUNCEMENT_ID);
 });
+test('resource IDs accept either canonical service-local or public API path', async () => {
+  const notes = [makeNote(NOTE_ID, USER_A)];
+  const localPath = await invokeNote({ method: 'GET', requester: USER_A, notes, url: '/notes/' + NOTE_ID });
+  assert.equal(localPath.response.statusCode, 200);
+  const apiPath = await invokeNote({ method: 'GET', requester: USER_A, notes, url: '/api/notes/' + NOTE_ID });
+  assert.equal(apiPath.response.statusCode, 200);
+  const announcements = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A)];
+  const announcement = await invokeAnnouncement({ method: 'GET', requester: USER_B, announcements, url: '/announcements/' + ANNOUNCEMENT_ID });
+  assert.equal(announcement.response.statusCode, 200);
+});
+
 test('new routes are callable and API IDs reject feature-shaped paths', async () => {
   assert.equal(typeof itemHandlerModule, 'function');
   assert.equal(typeof announcementHandlerModule, 'function');

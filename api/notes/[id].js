@@ -20,7 +20,7 @@ function bodyObject(request) {
 function noteId(request) {
   try {
     const pathname = new URL(request.url, 'https://invalid.local').pathname;
-    const match = /^\/api\/notes\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu.exec(pathname);
+    const match = /^(?:\/api)?\/notes\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu.exec(pathname);
     return match?.[1] ?? '';
   } catch { return ''; }
 }
