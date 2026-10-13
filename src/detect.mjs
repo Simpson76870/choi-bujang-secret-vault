@@ -117,3 +117,18 @@ export function detectDeviceAnomaly(events) {
   }
   return { suspicious: false };
 }
+
+/**
+ * Return a separate revocation proposal for exactly one validated virtual device.
+ * This does not call an API, revoke a device, or alter the access decision response.
+ */
+export function detectDeviceEvents(events) {
+  const candidate = detectDeviceAnomaly(events);
+  if (!candidate.suspicious) return { action: 'observe' };
+  return {
+    action: 'propose_revocation',
+    reasonCode: candidate.reasonCode,
+    subject: candidate.subject,
+    deviceId: candidate.deviceId,
+  };
+}
