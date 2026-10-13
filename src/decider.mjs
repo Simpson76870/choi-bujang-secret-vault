@@ -38,10 +38,46 @@ const starterResources = Object.freeze([
 ]);
 const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const RESOURCE_SCOPE_RULE = 'resource_scope';
+const REQUEST_KEYS = Object.freeze([
+  'schema', 'requestId', 'classId', 'projectId', 'subjectId', 'deviceId',
+  'service', 'method', 'path', 'route', 'queryLength', 'querySha256', 'at',
+  'policyRevision', 'deviceRegistered', 'stepUp', 'recentEvents', 'signals',
+].sort());
+const STEP_UP_KEYS = Object.freeze(['verified', 'authAgeSeconds'].sort());
+const SIGNAL_KEYS = Object.freeze(['source', 'region', 'network', 'hour'].sort());
+const EVENT_KEYS = Object.freeze(['kind', 'ageSeconds', 'count'].sort());
 export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', RESOURCE_SCOPE_RULE]);
 
+function hasExactKeys(value, expected) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length && keys.every((key, index) => key === expected[index]);
+}
+
+function hasOnlyKeys(value, expected) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).every(key => expected.includes(key));
+}
+
+// Reject any claimed identity/role/owner fields and all other keys outside
+// the engine's fixed contract, including fields smuggled into nested objects.
+function contractShapeAllowed(request) {
+  if (!hasExactKeys(request, REQUEST_KEYS)
+      || !hasExactKeys(request.stepUp, STEP_UP_KEYS)) return false;
+
+  if (request.signals && typeof request.signals === 'object'
+      && !Array.isArray(request.signals) && !hasOnlyKeys(request.signals, SIGNAL_KEYS)) return false;
+  if (Array.isArray(request.recentEvents)) {
+    for (const event of request.recentEvents) {
+      if (event && typeof event === 'object' && !Array.isArray(event)
+          && !hasOnlyKeys(event, EVENT_KEYS)) return false;
+    }
+  }
+  return true;
+}
+
 export function resourceAllowed(request, bindings = starterResources) {
-  if (!request || typeof request !== 'object'
+  if (!contractShapeAllowed(request)
       || request.schema !== 'aleph.decision.v1'
       || !['classId', 'projectId', 'subjectId'].every(key =>
         typeof request[key] === 'string' && request[key].length > 0 && request[key].length <= 256)
@@ -109,6 +145,9 @@ function validRecentEvents(events) {
     && Number.isFinite(event.ageSeconds) && event.ageSeconds >= 0);
 }
 export async function decide(request) {
+  if (!contractShapeAllowed(request)) {
+    return response(request, 'deny', 'resource_not_allowed', RESOURCE_SCOPE_RULE);
+  }
   if (!request || request.deviceRegistered !== true) {
     return response(request, 'deny', 'device_not_registered', 'device_registered');
   }
