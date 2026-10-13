@@ -19,7 +19,7 @@ function responseRecorder() {
   };
 }
 
-function memorySupabase(initialRows) {
+function memorySupabase(initialRows, { ignoreOwnerFilter = false } = {}) {
   const rows = initialRows.map(row => ({ ...row }));
   const queries = [];
   const supabase = {
@@ -49,7 +49,7 @@ function memorySupabase(initialRows) {
         },
         delete() { this.operation = 'delete'; return this; },
         matchingRows() {
-          return rows.filter(row => this.filters.every(([field, value]) => row[field] === value));
+          return rows.filter(row => this.filters.every(([field, value]) => ignoreOwnerFilter && field === 'owner_id' ? true : row[field] === value));
         },
         async maybeSingle() {
           if (this.operation === 'update') {
@@ -96,8 +96,8 @@ const makeNote = (id, owner_id, title = '가상 메모') => ({
   id, owner_id, title, content: '가상 본문', created_at: '2026-01-01T00:00:00Z',
 });
 
-async function invokeItem(method, requesterId, storedOwnerId, body) {
-  const supabase = memorySupabase([makeNote(NOTE_ID, storedOwnerId)]);
+async function invokeItem(method, requesterId, storedOwnerId, body, options = {}) {
+  const supabase = memorySupabase([makeNote(NOTE_ID, storedOwnerId)], options);
   const response = responseRecorder();
   const handler = createItemHandler(authenticatedAs(requesterId, supabase));
   await handler({
@@ -133,6 +133,16 @@ test('single-note DELETE denies another owner and keeps the row', async () => {
   assert.equal(supabase.rows.length, 1);
   assert.equal(supabase.rows[0].owner_id, USER_A);
   assert.ok(supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
+});
+
+
+test('all item methods fail closed if storage over-returns another owner row', async () => {
+  for (const method of ['GET', 'PUT', 'DELETE']) {
+    const body = method === 'PUT' ? { title: '침범 시도', body: '바뀌면 안 됨', owner_id: USER_B } : undefined;
+    const { response, supabase } = await invokeItem(method, USER_B, USER_A, body, { ignoreOwnerFilter: true });
+    assert.equal(response.statusCode, 404, method + ' must deny a foreign row even if the query over-returns');
+    assert.deepEqual(supabase.rows, [makeNote(NOTE_ID, USER_A)]);
+  }
 });
 
 test('owner can read, edit, and delete only their own note', async () => {
@@ -209,6 +219,19 @@ test('collection GET lists rows only for the authenticated owner', async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.payload.notes.map(note => note.title), ['B 메모']);
   assert.ok(supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
+});
+
+
+test('collection GET rechecks returned owners after the database filter', async () => {
+  const supabase = memorySupabase([
+    makeNote(NOTE_ID, USER_A, 'A 메모'),
+    makeNote(NEW_NOTE_ID, USER_B, 'B 메모'),
+  ], { ignoreOwnerFilter: true });
+  const response = responseRecorder();
+  const handler = createCollectionHandler(authenticatedAs(USER_B, supabase));
+  await handler({ method: 'GET', url: '/api/notes', headers: {} }, response);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload.notes.map(note => note.title), ['B 메모']);
 });
 
 test('default Vercel route exports remain callable', () => {
