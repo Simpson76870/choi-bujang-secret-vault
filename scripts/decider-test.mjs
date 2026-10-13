@@ -44,6 +44,14 @@ export async function checkDecider({ decide, ruleIds }) {
     route: 'PUT /notices/:id' };
   const crossedResourcePath = { ...normal, requestId: randomUUID(),
     service: 'notes', method: 'PUT', path: '/announcements/demo', route: 'PUT /notes/:id' };
+  const forgedOwnerField = { ...normal, requestId: randomUUID(),
+    resourceOwnerSubjectId: 'learner_b_fixture' };
+  const forgedStudentRole = { ...instructorAnnouncementEdit, requestId: randomUUID(),
+    role: 'student' };
+  const nestedRole = { ...instructorAnnouncementEdit, requestId: randomUUID(),
+    stepUp: { ...instructorAnnouncementEdit.stepUp, role: 'student' } };
+  const forgedSignalIdentity = { ...normal, requestId: randomUUID(),
+    signals: { ...normal.signals, subjectId: 'learner_b_fixture' } };
   const checks = [
     { name: '제공된 본인 메모 /notes/demo 읽기 허용', request: normal, decision: 'allow', reasonCode: 'approved' },
     { name: '제공된 본인 메모 수정 허용', request: { ...normal, requestId: randomUUID(),
@@ -81,6 +89,14 @@ export async function checkDecider({ decide, ruleIds }) {
       reasonCode: 'resource_not_allowed' },
     { name: '쿼리로 기능/자원 선택하는 요청 거부', request: queryChoice, decision: 'deny',
       reasonCode: 'resource_not_allowed' },
+    { name: '요청 본문의 비계약 소유자 필드 거부', request: forgedOwnerField, decision: 'deny',
+      reasonCode: 'resource_not_allowed' },
+    { name: '강사 주체에 학생 역할을 덧붙인 요청 거부', request: forgedStudentRole, decision: 'deny',
+      reasonCode: 'resource_not_allowed' },
+    { name: 'stepUp 중첩 객체의 비계약 역할 필드 거부', request: nestedRole, decision: 'deny',
+      reasonCode: 'resource_not_allowed' },
+    { name: '신호 객체에 임의 사용자 필드를 덧붙인 요청 거부', request: forgedSignalIdentity,
+      decision: 'deny', reasonCode: 'resource_not_allowed' },
   ];
   const results = [];
   for (const item of checks) {
