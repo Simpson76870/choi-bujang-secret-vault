@@ -22,18 +22,23 @@ function readOneDetectionEvent(event) {
 
   const subjectId = event.subjectId ?? event.identity?.sub;
   const signals = event.signals;
-  // The network signal may be recorded alongside the access log or in the
-  // engine's verified signals object. Only this single property is read.
+  // A network signal may arrive in a separate record, while a read record may
+  // have no network metadata. Read only the network field from the signal.
   const network = event.network ?? (
     signals && typeof signals === 'object' && !Array.isArray(signals)
       ? signals.network
       : undefined
   );
+  const hasMethod = event.method !== undefined;
+  const hasDecision = event.decision !== undefined;
+  const deviceId = event.deviceId ?? event.device?.id ?? event.device?.deviceId;
   if (typeof subjectId !== 'string' || !SUBJECT_ID.test(subjectId)
-      || typeof event.deviceId !== 'string' || !DEVICE_ID.test(event.deviceId)
-      || !METHODS.has(event.method)
-      || !DECISIONS.has(event.decision)
-      || !NETWORKS.has(network)) return null;
+      || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)
+      || (network !== undefined && !NETWORKS.has(network))
+      || (hasMethod && !METHODS.has(event.method))
+      || (hasDecision && !DECISIONS.has(event.decision))
+      // A record without a method is a separate unusual-network telemetry record.
+      || (!hasMethod && network !== 'unusual')) return null;
 
   const time = parseTime(event.at);
   if (time === null) return null;
@@ -43,10 +48,10 @@ function readOneDetectionEvent(event) {
   return Object.freeze({
     at: event.at,
     subjectId,
-    deviceId: event.deviceId,
-    method: event.method,
-    decision: event.decision,
-    network,
+    deviceId,
+    method: event.method ?? null,
+    decision: event.decision ?? null,
+    network: network ?? null,
     source: event.source ?? LOCAL_EVENT_SOURCE,
   });
 }
@@ -97,7 +102,10 @@ export function detectDeviceAnomaly(events) {
   // GETs, but retain any valid unusual-network event for the same verified
   // subject/device pair so a separate network log can complete the pattern.
   for (const event of parsed) {
-    const isAllowedRead = event.method === 'GET' && event.decision === 'allow';
+    // The original event contract had no decision field; for that legacy shape,
+    // a GET is treated as an observed successful read. Explicit denials never count.
+    const isAllowedRead = event.method === 'GET'
+      && (event.decision === null || event.decision === 'allow');
     const isUnusualNetwork = event.network === 'unusual';
     if (!isAllowedRead && !isUnusualNetwork) continue;
 

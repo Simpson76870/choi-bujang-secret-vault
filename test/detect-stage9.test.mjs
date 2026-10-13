@@ -102,6 +102,53 @@ test('combines allowed-read volume with a separate unusual-network log for the s
   });
 });
 
+test('accepts a separate unusual-network log without method or decision and does not count it as a read', () => {
+  const normalReads = reads(121, { network: 'usual' });
+  const networkOnly = {
+    at: new Date(START + 1).toISOString(),
+    subjectId: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+    network: 'unusual',
+    source: 'engine_verified',
+    private: 'must not be copied',
+  };
+  const result = detect([...normalReads, networkOnly]);
+  assert.deepEqual(result, {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+  const parsed = readDetectionEvents([networkOnly]);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].method, null);
+  assert.equal(parsed[0].decision, null);
+  assert.deepEqual(Object.keys(parsed[0]).sort(),
+    ['at', 'decision', 'deviceId', 'method', 'network', 'source', 'subjectId']);
+});
+
+test('combines legacy GET logs without network metadata with a separate unusual-network event', () => {
+  const legacyReads = Array.from({ length: 121 }, (_, index) => ({
+    at: new Date(START + index * 2_000).toISOString(),
+    method: 'GET',
+    identity: { sub: 'learner_fixture' },
+    device: { id: 'aaaaaaaaaaaaaaaa' },
+  }));
+  const networkOnly = {
+    at: new Date(START + 1).toISOString(),
+    identity: { sub: 'learner_fixture' },
+    device: { id: 'aaaaaaaaaaaaaaaa' },
+    signals: { network: 'unusual' },
+    source: 'engine_verified',
+  };
+  assert.deepEqual(detect([...legacyReads, networkOnly]), {
+    action: 'propose_revocation',
+    reasonCode: 'burst_read',
+    subject: 'learner_fixture',
+    deviceId: 'aaaaaaaaaaaaaaaa',
+  });
+});
+
 test('accepts the verified network signal nested under signals.network', () => {
   const nestedSignals = reads(121).map(({ network, ...event }) => ({
     ...event,
