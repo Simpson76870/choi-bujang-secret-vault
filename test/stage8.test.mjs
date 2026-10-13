@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import itemHandlerModule, { createItemHandler } from '../api/notes/[id].js';
 import announcementHandlerModule, { createAnnouncementItemHandler } from '../api/announcements/[id].js';
+import noticeHandlerModule, { createNoticeItemHandler } from '../api/notices/[id].js';
 const USER_A = '00000000-0000-4000-8000-000000000001';
 const USER_B = '00000000-0000-4000-8000-000000000002';
 const NOTE_ID = '10000000-0000-4000-8000-000000000099';
@@ -60,6 +61,12 @@ async function invokeAnnouncement({ method, requester, announcements, url, query
   await createAnnouncementItemHandler(authenticatedAs(requester, supabase))({ method, url, query, headers: {}, body }, response);
   return { response, supabase };
 }
+async function invokeNotice({ method, requester, announcements, url, query, body }) {
+  const supabase = memorySupabase({ announcements });
+  const response = responseRecorder();
+  await createNoticeItemHandler(authenticatedAs(requester, supabase))({ method, url, query, headers: {}, body }, response);
+  return { response, supabase };
+}
 test('note owner reads and edits own note; saved owner cannot be forged in body', async () => {
   const notes = [makeNote(NOTE_ID, USER_A)];
   const read = await invokeNote({ method: 'GET', requester: USER_A, notes, url: '/api/notes/' + NOTE_ID });
@@ -80,12 +87,13 @@ test('B cannot fetch A note; query id cannot override the resource ID in the pat
   assert.equal(result.supabase.queries[0].filters.find(([field]) => field === 'id')[1], NOTE_ID);
   assert.equal(result.supabase.tables.training_notes[0].content, '가상 본문');
 });
-test('unregistered other-zone memo is denied even when the requester owns that row', async () => {
-  const notes = [makeNote(NOTE_B_ID, USER_B)];
+test('different memo IDs are separate resources, and each remains owner-scoped', async () => {
+  const notes = [makeNote(NOTE_ID, USER_A), makeNote(NOTE_B_ID, USER_B)];
   const result = await invokeNote({ method: 'GET', requester: USER_B, notes, url: '/api/notes/' + NOTE_B_ID });
-  assert.equal(result.response.statusCode, 404);
-  assert.deepEqual(result.response.payload, { error: 'RESOURCE_NOT_ALLOWED' });
-  assert.equal(result.supabase.queries.length, 0);
+  assert.equal(result.response.statusCode, 200);
+  assert.equal(result.response.payload.id, NOTE_B_ID);
+  assert.ok(result.supabase.queries[0].filters.some(([field, value]) => field === 'id' && value === NOTE_B_ID));
+  assert.ok(result.supabase.queries[0].filters.some(([field, value]) => field === 'owner_id' && value === USER_B));
 });
 
 test('non-instructor cannot edit a published announcement by forging role/instructor_id in body', async () => {
@@ -118,6 +126,20 @@ test('published announcements may be read, drafts are visible only to their inst
   const teacherDraft = await invokeAnnouncement({ method: 'GET', requester: USER_A, announcements: rows, url: '/api/announcements/' + DRAFT_ID });
   assert.equal(teacherDraft.response.statusCode, 200);
 });
+test('notice alias resolves its own public API path while preserving instructor checks', async () => {
+  const rows = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A, true)];
+  const read = await invokeNotice({ method: 'GET', requester: USER_B, announcements: rows,
+    url: '/api/notices/' + ANNOUNCEMENT_ID });
+  assert.equal(read.response.statusCode, 200);
+  assert.equal(read.response.payload.id, ANNOUNCEMENT_ID);
+  const edit = await invokeNotice({ method: 'PUT', requester: USER_B, announcements: rows,
+    url: '/api/notices/' + ANNOUNCEMENT_ID,
+    body: { title: '위조 공지', body: '변경 금지', role: 'teacher', instructor_id: USER_B } });
+  assert.equal(edit.response.statusCode, 403);
+  assert.deepEqual(edit.response.payload, { error: 'INSTRUCTOR_REQUIRED' });
+  assert.equal(edit.supabase.tables.training_announcements[0].title, '가상 공지');
+});
+
 test('announcement ID is extracted from path, not query parameter', async () => {
   const rows = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A), makeAnnouncement(DRAFT_ID, USER_A)];
   const result = await invokeAnnouncement({ method: 'GET', requester: USER_B, announcements: rows,
@@ -142,6 +164,7 @@ test('resource IDs accept either canonical service-local or public API path', as
 test('new routes are callable and API IDs reject feature-shaped paths', async () => {
   assert.equal(typeof itemHandlerModule, 'function');
   assert.equal(typeof announcementHandlerModule, 'function');
+  assert.equal(typeof noticeHandlerModule, 'function');
   const supabase = memorySupabase({ notes: [makeNote(NOTE_ID, USER_A)] });
   const response = responseRecorder();
   await createItemHandler(authenticatedAs(USER_A, supabase))({ method: 'GET', url: '/api/notes/export' }, response);
