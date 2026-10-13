@@ -18,13 +18,11 @@ function bodyObject(request) {
 }
 
 function noteId(request) {
-  const queryId = Array.isArray(request.query?.id) ? request.query.id[0] : request.query?.id;
-  if (typeof queryId === 'string' && queryId) return queryId;
   try {
-    return new URL(request.url, 'https://invalid.local').pathname.split('/').filter(Boolean).at(-1) ?? '';
-  } catch {
-    return '';
-  }
+    const pathname = new URL(request.url, 'https://invalid.local').pathname;
+    const match = /^\/api\/notes\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu.exec(pathname);
+    return match?.[1] ?? '';
+  } catch { return ''; }
 }
 
 function present(note) {
