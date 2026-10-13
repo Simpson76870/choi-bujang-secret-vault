@@ -43,7 +43,7 @@ function memorySupabase({ notes = [], announcements = [] } = {}) {
     },
   };
 }
-function authenticatedAs(userId, supabase) { return async () => ({ identity: { kind: 'student', userId }, supabase }); }
+function authenticatedAs(userId, supabase, { isInstructor = false } = {}) { return async () => ({ identity: { kind: 'student', userId, isInstructor }, supabase }); }
 const makeNote = (id, owner_id) => ({ id, owner_id, title: '가상 메모', content: '가상 본문', created_at: '2026-01-01T00:00:00Z' });
 const makeAnnouncement = (id, instructor_id, published = true) => ({
   id, instructor_id, class_id: '30000000-0000-4000-8000-000000000001',
@@ -55,16 +55,16 @@ async function invokeNote({ method, requester, notes, url, query, body }) {
   await createItemHandler(authenticatedAs(requester, supabase))({ method, url, query, headers: {}, body }, response);
   return { response, supabase };
 }
-async function invokeAnnouncement({ method, requester, announcements, url, query, body }) {
+async function invokeAnnouncement({ method, requester, announcements, url, query, body, isInstructor = false }) {
   const supabase = memorySupabase({ announcements });
   const response = responseRecorder();
-  await createAnnouncementItemHandler(authenticatedAs(requester, supabase))({ method, url, query, headers: {}, body }, response);
+  await createAnnouncementItemHandler(authenticatedAs(requester, supabase, { isInstructor }))({ method, url, query, headers: {}, body }, response);
   return { response, supabase };
 }
-async function invokeNotice({ method, requester, announcements, url, query, body }) {
+async function invokeNotice({ method, requester, announcements, url, query, body, isInstructor = false }) {
   const supabase = memorySupabase({ announcements });
   const response = responseRecorder();
-  await createNoticeItemHandler(authenticatedAs(requester, supabase))({ method, url, query, headers: {}, body }, response);
+  await createNoticeItemHandler(authenticatedAs(requester, supabase, { isInstructor }))({ method, url, query, headers: {}, body }, response);
   return { response, supabase };
 }
 test('note owner reads and edits own note; saved owner cannot be forged in body', async () => {
@@ -106,9 +106,22 @@ test('non-instructor cannot edit a published announcement by forging role/instru
   assert.equal(result.supabase.tables.training_announcements[0].title, '가상 공지');
   assert.equal(result.supabase.tables.training_announcements[0].instructor_id, USER_A);
 });
-test('stored instructor can edit own announcement and update is owner-filtered', async () => {
+
+test('a student cannot edit an announcement even when instructor_id equals their user ID', async () => {
   const announcements = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A)];
   const result = await invokeAnnouncement({ method: 'PUT', requester: USER_A, announcements,
+    url: '/api/announcements/' + ANNOUNCEMENT_ID,
+    body: { title: '학생 수정', body: '수정되면 안 됨', role: 'teacher', instructor_id: USER_A } });
+  assert.equal(result.response.statusCode, 403);
+  assert.deepEqual(result.response.payload, { error: 'INSTRUCTOR_REQUIRED' });
+  assert.equal(result.supabase.tables.training_announcements[0].title, '가상 공지');
+  assert.equal(result.supabase.tables.training_announcements[0].instructor_id, USER_A);
+  assert.equal(result.supabase.queries.some(query => query.operation === 'update'), false);
+});
+
+test('stored instructor can edit own announcement and update is owner-filtered', async () => {
+  const announcements = [makeAnnouncement(ANNOUNCEMENT_ID, USER_A)];
+  const result = await invokeAnnouncement({ method: 'PUT', requester: USER_A, announcements, isInstructor: true,
     url: '/api/announcements/' + ANNOUNCEMENT_ID,
     body: { title: '바뀐 공지', body: '새 공지 본문', role: 'student', instructor_id: USER_B } });
   assert.equal(result.response.statusCode, 200);
@@ -123,7 +136,7 @@ test('published announcements may be read, drafts are visible only to their inst
   assert.equal(published.response.statusCode, 200);
   const draft = await invokeAnnouncement({ method: 'GET', requester: USER_B, announcements: rows, url: '/api/announcements/' + DRAFT_ID });
   assert.equal(draft.response.statusCode, 404);
-  const teacherDraft = await invokeAnnouncement({ method: 'GET', requester: USER_A, announcements: rows, url: '/api/announcements/' + DRAFT_ID });
+  const teacherDraft = await invokeAnnouncement({ method: 'GET', requester: USER_A, announcements: rows, url: '/api/announcements/' + DRAFT_ID, isInstructor: true });
   assert.equal(teacherDraft.response.statusCode, 200);
 });
 test('notice alias resolves its own public API path while preserving instructor checks', async () => {
