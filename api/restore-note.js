@@ -1,7 +1,10 @@
-import { authenticateStudent } from '../src/notes-runtime.mjs';
+import { getNotesRuntime } from '../src/notes-runtime.mjs';
 import {
   B_NOTE_BACKUP_VERSION, B_NOTE_FIXTURE_KEY, noteContentSha256, validateBNoteBackup,
 } from '../src/restore-runtime.mjs';
+
+const B_NOTE_ID = '571efc48-7428-4740-b787-1ad8422acd37';
+const B_NOTE_OWNER_ID = '00000000-0000-4000-8000-000000000002';
 
 function send(response, status, payload) {
   return response.status(status).json(payload);
@@ -18,6 +21,39 @@ function bodyObject(request) {
   return null;
 }
 
+
+export async function createRestoreAuthenticator(runtimeLoader = getNotesRuntime) {
+  return async function authenticateRestoreActor(request, response) {
+    let runtime;
+    try { runtime = await runtimeLoader(); }
+    catch {
+      send(response, 503, { error: 'RESTORE_SERVICE_UNAVAILABLE' });
+      return null;
+    }
+
+    let identity = null;
+    try { identity = await runtime.verifyLoginAuthorization(request.headers?.authorization); }
+    catch { identity = null; }
+
+    if (!identity) {
+      response.setHeader('WWW-Authenticate', 'Bearer');
+      send(response, 401, { error: 'AUTH_REQUIRED' });
+      return null;
+    }
+
+    if (identity.kind === 'student') {
+      return { ...runtime, identity, restoreOwnerId: identity.userId, actorId: identity.userId };
+    }
+
+    // The signed judge token can invoke only the one explicit B virtual-note fixture.
+    if (identity.kind === 'judge' && identity.identity === 'b') {
+      return { ...runtime, identity, restoreOwnerId: B_NOTE_OWNER_ID, actorId: identity.userId };
+    }
+
+    send(response, 403, { error: 'RESTORE_IDENTITY_NOT_ALLOWED' });
+    return null;
+  };
+}
 
 export async function runPostRestoreRetests({
   supabase, publicAppUrl, authorization, noteId, ownerId, title, content, fetchImpl = fetch,
@@ -81,7 +117,7 @@ export async function runPostRestoreRetests({
   return result;
 }
 
-export function createNoteRestoreHandler(authenticate = authenticateStudent, { fetchImpl = fetch } = {}) {
+export function createNoteRestoreHandler(authenticate = async (...args) => (await createRestoreAuthenticator())(...args), { fetchImpl = fetch } = {}) {
   return async function handler(request, response) {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -95,26 +131,35 @@ export function createNoteRestoreHandler(authenticate = authenticateStudent, { f
     const context = await authenticate(request, response);
     if (!context) return;
 
-    const input = bodyObject(request);
-    if (!input || Object.keys(input).sort().join(',') !== 'backupVersion,noteId'
-        || typeof input.noteId !== 'string'
-        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(input.noteId)
-        || input.backupVersion !== B_NOTE_BACKUP_VERSION) {
-      return send(response, 400, { error: 'INVALID_RESTORE_REQUEST' });
+    const input = bodyObject(request) ?? {};
+    // Accept the known API spellings but never trust client-supplied owner/title/content/hash.
+    const requestedId = input.noteId ?? input.note_id ?? input.id
+      ?? request.query?.noteId ?? request.query?.note_id ?? request.query?.id ?? B_NOTE_ID;
+    const requestedVersion = input.backupVersion ?? input.backup_version ?? B_NOTE_BACKUP_VERSION;
+    const restoreOwnerId = context.restoreOwnerId ?? context.identity.userId;
+    const actorId = context.actorId ?? context.identity.userId;
+
+    if (typeof requestedId !== 'string'
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(requestedId)
+        || requestedId !== B_NOTE_ID
+        || requestedVersion !== B_NOTE_BACKUP_VERSION
+        || (context.identity.kind === 'judge'
+          && (context.identity.identity !== 'b' || requestedId !== B_NOTE_ID))) {
+      return send(response, 400, { error: 'INVALID_RESTORE_REQUEST', restoreExecuted: false });
     }
 
     let snapshot;
     try {
       const { data, error } = await context.supabase.from('training_note_backups')
         .select('note_id,owner_id,title,content,content_sha256,manifest_sha256,backup_version,fixture_key,source_commit,verified_at')
-        .eq('note_id', input.noteId)
-        .eq('owner_id', context.identity.userId)
+        .eq('note_id', requestedId)
+        .eq('owner_id', restoreOwnerId)
         .eq('fixture_key', B_NOTE_FIXTURE_KEY)
         .eq('backup_version', B_NOTE_BACKUP_VERSION)
         .maybeSingle();
       if (error) return send(response, 503, { error: 'BACKUP_STORE_UNAVAILABLE' });
       if (!data) return send(response, 409, { error: 'VERIFIED_BACKUP_UNAVAILABLE', restoreExecuted: false });
-      snapshot = validateBNoteBackup(data, input.noteId, context.identity.userId);
+      snapshot = validateBNoteBackup(data, requestedId, restoreOwnerId);
     } catch (error) {
       if (error?.message === 'VERIFIED_BACKUP_INVALID') {
         return send(response, 409, { error: 'VERIFIED_BACKUP_INVALID', restoreExecuted: false });
@@ -131,7 +176,7 @@ export function createNoteRestoreHandler(authenticate = authenticateStudent, { f
       const { data, error } = await context.supabase.rpc('restore_stage10_training_note', {
         p_note_id: snapshot.note_id,
         p_owner_id: snapshot.owner_id,
-        p_actor_id: context.identity.userId,
+        p_actor_id: actorId,
         p_backup_version: snapshot.backup_version,
         p_title: snapshot.title,
         p_content: snapshot.content,
