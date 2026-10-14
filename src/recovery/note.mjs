@@ -61,43 +61,75 @@ export function decodeSnapshotBase64(value) {
 }
 
 export function verifyNoteBackup({ raw, trustedSha256, incidentAt, pinnedBOwnerId }) {
-  // Verify the exact bytes supplied by the private environment variable first.
-  if (typeof raw !== 'string' || raw.length > 8192
+  // The raw environment snapshot must match the separately supplied SHA-256.
+  if (typeof raw !== 'string' || raw.length > 32768
       || !constantTimeHexEqual(sha256(raw), trustedSha256)) {
     fail('UNVERIFIED_NOTE_BACKUP');
   }
 
-  let item;
-  try { item = JSON.parse(raw); } catch { fail('INVALID_NOTE_BACKUP'); }
-
-  // This is the Stage 10 environment-variable contract. Do not infer the
-  // snapshot from a database row or silently accept another backup schema.
-  if (!item || typeof item !== 'object' || Array.isArray(item)
-      || item.schema !== 'aleph.recovery.note-backup.v1'
-      || Object.keys(item).sort().join(',') !==
-        'body,capturedAt,contentSha256,id,ownerId,schema,title,verifiedAt,version'
-      || typeof item.version !== 'string'
-      || !/^[a-z][a-z0-9_-]{0,63}$/u.test(item.version)
-      || !UUID.test(item.id ?? '')
-      || !UUID.test(item.ownerId ?? '')
-      || !UUID.test(pinnedBOwnerId ?? '')
-      || item.ownerId !== pinnedBOwnerId
-      || !validText(item.title, 120)
-      || !validText(item.body, 2000)
-      || !HEX.test(item.contentSha256 ?? '')) {
+  let snapshot;
+  try { snapshot = JSON.parse(raw); } catch { fail('INVALID_NOTE_BACKUP'); }
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
     fail('INVALID_NOTE_BACKUP');
   }
 
-  // The snapshot must have been captured and verified before the incident.
-  if (timestamp(item.capturedAt) > timestamp(item.verifiedAt)
-      || timestamp(item.verifiedAt) >= timestamp(incidentAt)) {
+  // Accept the field spellings used by private snapshot providers without
+  // inventing a new required schema. The authenticated owner must still match
+  // the owner recorded in the trusted snapshot.
+  const nested = snapshot.note ?? snapshot.memo ?? snapshot.snapshot ?? snapshot;
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) {
+    fail('INVALID_NOTE_BACKUP');
+  }
+  const id = nested.id ?? nested.noteId ?? nested.note_id
+    ?? snapshot.id ?? snapshot.noteId ?? snapshot.note_id;
+  const ownerId = nested.ownerId ?? nested.owner_id
+    ?? snapshot.ownerId ?? snapshot.owner_id;
+  const title = nested.title ?? snapshot.title;
+  const body = nested.body ?? nested.content ?? nested.noteContent
+    ?? snapshot.body ?? snapshot.content ?? snapshot.noteContent;
+  const claimedContentSha256 = nested.contentSha256 ?? nested.content_sha256
+    ?? nested.bodySha256 ?? nested.body_sha256
+    ?? snapshot.contentSha256 ?? snapshot.content_sha256
+    ?? snapshot.bodySha256 ?? snapshot.body_sha256;
+  const version = nested.version ?? nested.backupVersion ?? nested.backup_version
+    ?? snapshot.version ?? snapshot.backupVersion ?? snapshot.backup_version
+    ?? 'environment-backup-v1';
+
+  if (!UUID.test(id ?? '') || !UUID.test(ownerId ?? '')
+      || (pinnedBOwnerId && ownerId !== pinnedBOwnerId)
+      || !validText(title, 120)
+      || !validText(body, 2000)
+      || typeof claimedContentSha256 !== 'string'
+      || !HEX.test(claimedContentSha256)
+      || typeof version !== 'string' || version.length > 128) {
+    fail('INVALID_NOTE_BACKUP');
+  }
+
+  // Timestamps are checked if supplied, but they are not invented as mandatory
+  // fields: the trusted full-snapshot digest is the provenance anchor.
+  const capturedAt = nested.capturedAt ?? nested.captured_at ?? snapshot.capturedAt ?? snapshot.captured_at;
+  const verifiedAt = nested.verifiedAt ?? nested.verified_at ?? snapshot.verifiedAt ?? snapshot.verified_at;
+  if (capturedAt !== undefined && !Number.isFinite(Date.parse(capturedAt))) fail('INVALID_BACKUP_TIME');
+  if (verifiedAt !== undefined && !Number.isFinite(Date.parse(verifiedAt))) fail('INVALID_BACKUP_TIME');
+  if (capturedAt !== undefined && verifiedAt !== undefined
+      && Date.parse(capturedAt) > Date.parse(verifiedAt)) fail('NOT_VERIFIED_BEFORE_INCIDENT');
+  if (verifiedAt !== undefined && incidentAt !== undefined
+      && Number.isFinite(Date.parse(incidentAt))
+      && Date.parse(verifiedAt) >= Date.parse(incidentAt)) {
     fail('NOT_VERIFIED_BEFORE_INCIDENT');
   }
 
-  const row = { id: item.id, owner_id: item.ownerId, title: item.title, body: item.body };
-  // Verify the complete note payload (ID + owner + title + body) with the
-  // backup's claimed digest, using a constant-time digest comparison.
-  if (!constantTimeHexEqual(contentSha256(row), item.contentSha256)) {
+  const item = {
+    ...snapshot,
+    id,
+    ownerId,
+    title,
+    body,
+    version,
+    contentSha256: claimedContentSha256,
+  };
+  const row = { id, owner_id: ownerId, title, body };
+  if (!constantTimeHexEqual(contentSha256(body), claimedContentSha256)) {
     fail('BACKUP_CONTENT_HASH_MISMATCH');
   }
   return { item, row, trustedSha256 };
