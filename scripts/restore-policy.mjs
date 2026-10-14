@@ -21,7 +21,7 @@ try {
     }, null, 2) + '\\n');
   } else if (action === 'apply' && confirm.length === 1 && unknown.length === 0) {
     const result = await applyStep10Restore({ confirmVersion: confirm[0].slice('--confirm='.length) });
-    process.stdout.write(JSON.stringify(result, null, 2) + '\\n');
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } else {
     console.error('Usage: npm run restore:plan | npm run restore:apply -- --confirm=<backupVersion>');
     process.exitCode = 2;
