@@ -134,7 +134,7 @@ async function runLiveRetests({ request, env, db, note, fetchImpl }) {
   };
   const base = retestBase(request, env);
   const authorization = request.headers?.authorization;
-  if (!base || typeof authorization !== 'string' || !/^Bearer\\s+\\S+/u.test(authorization)) return result;
+  if (!base || typeof authorization !== 'string' || !/^Bearer\s+\S+/u.test(authorization)) return result;
 
   const requestGet = async path => {
     const url = new URL(path, base);
