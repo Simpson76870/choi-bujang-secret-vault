@@ -153,10 +153,10 @@ npm run build
 - 복구 사본은 **Git, 현재 메모 행, DB 백업 테이블에서 가져오지 않습니다.** 실행 환경이 서버 전용 변수 `RESTORE_NOTE_SNAPSHOT_BASE64`로 주입한 사본만 사용합니다. 실제 원문 SHA-256은 `RESTORE_NOTE_BACKUP_SHA256`에 별도로 고정되어야 합니다.
 - 추가 환경 설정: `RESTORE_ENABLED=1`, `RESTORE_INCIDENT_AT`, `RESTORE_B_OWNER_ID`, `RESTORE_OPERATOR_USER_ID`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`. 사후 HTTP 재시험 목적지는 `RESTORE_PUBLIC_APP_URL`로 재정의할 수 있으며 기본값은 `aleph.config.json`의 공개 배포 URL입니다. 환경 값 자체는 Git·응답·감사·번들에 기록하지 않습니다.
 - Vercel 운영 환경의 `RESTORE_*` 값은 비공개 민감 변수로만 보관합니다. 검증된 B 가상 메모 사본과 원문 체크섬은 저장소 파일·HTML·응답·감사 이력에 복사하지 않습니다. 복구 전후에는 환경 변수에서 사본을 다시 읽고 검증하며, 값이 없거나 달라지면 데이터 변경 전에 중단합니다.
-- 사본은 `aleph.recovery.note-backup.v1` 스키마(`version`, `id`, `ownerId`, `title`, `body`, `capturedAt`, `verifiedAt`, `contentSha256`)여야 합니다. 전체 JSON 원문 SHA-256과 `JSON.stringify({ id, owner_id, title, body })`의 콘텐츠 SHA-256을 각각 `crypto.timingSafeEqual`로 비교합니다. 검증 시각이 `RESTORE_INCIDENT_AT`보다 늦거나 같으면 중단합니다.
+- 사본은 `aleph.recovery.note-backup.v1` 스키마(`version`, `id`, `ownerId`, `title`, `body`, `capturedAt`, `verifiedAt`, `contentSha256`)여야 합니다. 전체 JSON 원문 SHA-256과 메모 본문 문자열의 SHA-256을 각각 `crypto.timingSafeEqual`로 비교합니다. 검증 시각이 `RESTORE_INCIDENT_AT`보다 늦거나 같으면 중단합니다.
 - `GET /api/restore/notes/:id`는 기준 사본과 현재 한 건의 차이 필드, 버전, 해시, 계획 확인값만 반환합니다. 별칭 `GET /api/notes/restore/:id`도 동일한 핸들러로 연결됩니다.
 - `POST /api/restore/notes/:id`는 요청 본문이 비어 있어야 합니다. ID·소유자·역할·제목·본문·계획 해시 등 클라이언트가 보내는 필드는 모두 HTTP 400으로 거부합니다. 실제 소유자는 검증된 Bearer 토큰과 환경의 고정 B 사용자 ID로 결정합니다. 소유자 불일치는 403, 요청 ID가 사본에 없으면 404, 환경 또는 백업 검증 재료가 없거나 검증에 실패하면 503입니다.
-- POST는 미리보기에 사용한 객체를 재사용하지 않습니다. 변경 직전에 환경 변수에서 사본을 다시 읽고 전체·본문 해시를 재검증하며, 계획 이후 현재 메모 상태가 바뀌었으면 거부합니다. 복원 직후 DB를 다시 읽어 ID·소유자·본문 해시를 확인합니다. 응답에는 메모 본문을 넣지 않습니다.
+- POST는 미리보기에 사용한 객체를 재사용하지 않습니다. 변경 직전에 환경 변수에서 사본을 다시 읽고 전체·본문 해시를 재검증하며, 복구를 적용하는 동안 현재 메모 상태가 바뀌면 compare-and-swap으로 거부합니다. 복원 직후 DB를 다시 읽어 ID·소유자·본문 해시를 확인합니다. 응답에는 메모 본문을 넣지 않습니다.
 - ALEPH 심판 서명 토큰은 검증기에서 확인한 `aleph_identity: "b"`일 때만 복구 시험 신원으로 매핑합니다. 이 예외는 `RESTORE_B_OWNER_ID`와 `RESTORE_OPERATOR_USER_ID`가 모두 고정 가상 B ID `00000000-0000-4000-8000-000000000002`와 일치할 때만 작동합니다. 심판 A나 다른 신원은 거부하며, 감사 조회도 B 본인 기록만 반환합니다. 이 예외는 시험 계정 전용이고 일반 사용자 권한을 넓히지 않습니다.
 
 ### 재시험·감사·운영 현황
