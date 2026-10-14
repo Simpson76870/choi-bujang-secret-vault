@@ -172,6 +172,28 @@ npm run build
 - `npm run restore:apply -- --confirm=stage9-safe-policy-v1`는 미리보기 이후 사본 해시와 현재 정책 지문이 바뀌지 않았을 때만 실행합니다. 결과와 검증한 시험 정책은 `artifacts/`에만 출력되며, `src/decider.mjs`·운영 정책·DB·감사 이력은 쓰지 않습니다.
 - `artifacts/`와 `bundle-notes.json`은 `.gitignore`에 포함합니다. `npm run bundle`은 커밋되지 않은 추적 대상 파일이 있으면 실패합니다. 번들 자체의 HTTP 점검은 GET 중심으로 유지하며 복구 POST/PUT을 보내지 않습니다.
 
+### 복원 후 1~9단계 재시험 순서
+
+복구 POST가 `restore.retests.passed === true`를 반환했는지 먼저 확인합니다. 그다음 아래 회귀 시험을 순서대로 실행합니다.
+
+```sh
+npm ci
+npm run test:r5
+npm run test:stage3
+npm run test:stage4
+npm run test:stage5
+npm run decider:test
+npm run detect:test
+npm run test:stage9
+npm run test:stage8
+npm run test:stage10
+npm run build
+```
+
+정상 결과는 A의 허용된 본인 자료 접근과 기존 기능 테스트의 통과입니다. 금지 결과는 B가 A 소유 메모를 조회·변경하지 못하고, 등록되지 않은 기기·범위 밖 자원·위험 조건이 정책에 따라 거부 또는 추가 확인을 받는 것입니다. `decider:test` 및 개별 `test:stage*`는 가상 회귀 시험이며 실제 운영 요청의 증거가 아닙니다. 실제 배포에서 확인한 본인 메모 GET과 타인 메모 GET은 복구 응답의 `restore.retests` 결과를 확인하고, 실행되지 않은 나머지 시험은 `not_run`으로 남깁니다.
+
+`npm run bundle`은 변경 사항을 커밋한 깨끗한 작업 트리에서 마지막으로 실행합니다. 제출 묶음의 HTTP 기록에는 실제로 보낸 요청 결과만 포함하고, 인증된 복구 또는 1~9단계 실측을 실행하지 않았다면 완료로 표시하지 않습니다.
+
 ### 확인 순서
 
 ```sh
