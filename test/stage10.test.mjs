@@ -114,8 +114,8 @@ test('Stage 10 database migration isolates test policy, backup and append-only a
 
 test('README states restore routes and unavailable-backup fail-closed behavior', async () => {
   const readme = await read('../README.md');
-  assert.match(readme, /GET `\/api\/restore-policy`/u);
-  assert.match(readme, /POST `\/api\/restore-note`/u);
+  assert.match(readme, /GET \| `\/api\/restore-policy`/u);
+  assert.match(readme, /POST \| `\/api\/restore-note`/u);
   assert.match(readme, /VERIFIED_BACKUP_UNAVAILABLE/u);
   assert.match(readme, /TEST_POLICY_STATE_UNAVAILABLE/u);
 });
