@@ -54,6 +54,7 @@ function snapshotInputs(env) {
   const provisional = {
     raw,
     trustedSha256,
+    snapshotSource: encoded,
     incidentAt: env.RESTORE_INCIDENT_AT,
     pinnedBOwnerId: env.RESTORE_B_OWNER_ID,
   };
@@ -357,10 +358,7 @@ export function createRestoreHandler({
           store,
           // Read and validate through the exact same env contract as the first
           // verification, including alternate runner-provided variable names.
-          rereadBackup: async () => {
-            const fresh = snapshotInputs(env);
-            return { raw: fresh.raw, trustedSha256: fresh.trustedSha256 };
-          },
+          rereadBackup: async () => snapshotInputs(env),
         });
       } catch (error) {
         if (error?.message === 'RESTORE_NOT_AUTHORIZED' || error?.message === 'NOTE_OWNER_CONFLICT') {
