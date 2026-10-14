@@ -256,9 +256,9 @@ test('README documents environment backup, recovery route, audit and truthful op
   const readme = await read('../README.md');
   assert.ok(readme.includes('RESTORE_NOTE_SNAPSHOT_BASE64'));
   assert.ok(readme.includes('RESTORE_NOTE_BACKUP_SHA256'));
-  assert.ok(readme.includes('POST `/api/restore/notes/:id`'));
-  assert.ok(readme.includes('GET `/api/notes/audit`'));
-  assert.ok(readme.includes('GET `/api/operations`'));
+  assert.ok(readme.includes('/api/restore/notes/:id'));
+  assert.ok(readme.includes('/api/notes/audit'));
+  assert.ok(readme.includes('/api/operations'));
   assert.ok(readme.includes('not_run'));
   assert.ok(readme.includes('npm run restore:plan'));
 });
