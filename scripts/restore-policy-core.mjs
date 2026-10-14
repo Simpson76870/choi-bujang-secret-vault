@@ -42,7 +42,7 @@ export async function loadStep10PolicyBackup() {
     ]);
   } catch { fail('POLICY_BACKUP_MISSING'); }
 
-  const declared = /^([a-f0-9]{64})(?:\\s+safe-policy\\.json)?\\s*$/u.exec(hashText)?.[1];
+  const declared = /^([a-f0-9]{64})(?:\s+safe-policy\.json)?\s*$/u.exec(hashText)?.[1];
   const actual = sha256(raw);
   if (!declared || !timingSafeHashMatch(declared, PINNED_SHA256)
       || !timingSafeHashMatch(actual, declared)) fail('POLICY_BACKUP_UNVERIFIED');
