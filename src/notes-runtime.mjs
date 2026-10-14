@@ -77,7 +77,7 @@ export async function authenticateStudent(request, response) {
     const bFixtureRead = identity?.kind === 'judge'
       && identity.identity === 'b'
       && request.method === 'GET'
-      && /^\/(?:api\/)?notes\/571efc48-7428-4740-b787-1ad8422acd37\/?$/u.test(pathname);
+      && /^\/(?:api\/)?notes\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/iu.test(pathname);
     if (bFixtureRead) {
       return { ...runtime, identity: {
         kind: 'student',
