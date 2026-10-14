@@ -19,10 +19,13 @@
     "PUT /api/announcements/:id",
     "GET /api/notices/:id",
     "PUT /api/notices/:id",
-    "GET /api/restore-policy",
-    "POST /api/restore-policy",
-    "POST /api/restore-note"
+    "GET /api/restore/notes/:id",
+    "POST /api/restore/notes/:id",
+    "GET /api/notes/restore/:id",
+    "POST /api/notes/restore/:id",
+    "GET /api/notes/audit",
+    "GET /api/operations"
   ],
   "originalApiUrl": "https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes",
-  "restoreRoute": "POST /api/restore-note"
+  "restoreRoute": "/api/restore/notes/:id"
 }
