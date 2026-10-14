@@ -18,7 +18,70 @@ function bodyObject(request) {
   return null;
 }
 
-export function createNoteRestoreHandler(authenticate = authenticateStudent) {
+
+export async function runPostRestoreRetests({
+  supabase, publicAppUrl, authorization, noteId, ownerId, title, content, fetchImpl = fetch,
+} = {}) {
+  const result = {
+    executed: false,
+    normal: { target: 'own_restored_note', method: 'GET', status: null, attempted: false, passed: false },
+    forbidden: { target: 'other_owner_note', method: 'GET', status: null, attempted: false, passed: false },
+    passed: false,
+  };
+
+  let base;
+  try { base = new URL(publicAppUrl); } catch { return result; }
+  if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash
+      || typeof authorization !== 'string' || !/^Bearer\s+\S+/u.test(authorization)
+      || typeof fetchImpl !== 'function') return result;
+
+  let foreignId = '';
+  try {
+    const { data, error } = await supabase.from('training_notes')
+      .select('id,owner_id').neq('owner_id', ownerId).limit(1).maybeSingle();
+    if (!error && data && data.owner_id !== ownerId
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(data.id)
+        && data.id !== noteId) foreignId = data.id;
+  } catch { /* A missing foreign fixture is recorded as a skipped negative retest. */ }
+
+  const headers = { authorization, accept: 'application/json' };
+  const timeoutSignal = typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(7000) : undefined;
+  const call = async path => {
+    const url = new URL(path, base);
+    const options = { method: 'GET', headers, cache: 'no-store' };
+    if (timeoutSignal) options.signal = timeoutSignal;
+    try {
+      const response = await fetchImpl(url, options);
+      let payload = null;
+      try { payload = await response.json(); } catch { /* Non-JSON is a failed retest. */ }
+      return { status: response.status, payload };
+    } catch {
+      return { status: null, payload: null };
+    }
+  };
+
+  result.normal.attempted = true;
+  const normal = await call('/api/notes/' + noteId);
+  result.normal.status = normal.status;
+  result.normal.passed = normal.status === 200
+    && normal.payload?.id === noteId
+    && normal.payload?.title === title
+    && normal.payload?.body === content;
+
+  if (foreignId) {
+    result.forbidden.attempted = true;
+    const forbidden = await call('/api/notes/' + foreignId);
+    result.forbidden.status = forbidden.status;
+    result.forbidden.passed = forbidden.status === 404
+      && forbidden.payload?.error === 'NOTE_NOT_FOUND';
+  }
+
+  result.executed = result.normal.attempted && result.forbidden.attempted;
+  result.passed = result.executed && result.normal.passed && result.forbidden.passed;
+  return result;
+}
+
+export function createNoteRestoreHandler(authenticate = authenticateStudent, { fetchImpl = fetch } = {}) {
   return async function handler(request, response) {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -81,6 +144,34 @@ export function createNoteRestoreHandler(authenticate = authenticateStudent) {
           || data.backupVersion !== snapshot.backup_version) {
         return send(response, 503, { error: 'RESTORE_VERIFICATION_FAILED', restoreExecuted: false });
       }
+      const postRestoreRetest = await runPostRestoreRetests({
+        supabase: context.supabase,
+        publicAppUrl: context.config?.publicAppUrl,
+        authorization: request.headers?.authorization,
+        noteId: snapshot.note_id,
+        ownerId: snapshot.owner_id,
+        title: snapshot.title,
+        content: snapshot.content,
+        fetchImpl,
+      });
+
+      let postRestoreRetestAuditRecorded = false;
+      try {
+        const { error: auditError } = await context.supabase.from('training_note_restore_retest_audit').insert({
+          actor_id: context.identity.userId,
+          note_id: snapshot.note_id,
+          backup_version: snapshot.backup_version,
+          normal_attempted: postRestoreRetest.normal.attempted,
+          normal_status: postRestoreRetest.normal.status,
+          normal_passed: postRestoreRetest.normal.passed,
+          forbidden_attempted: postRestoreRetest.forbidden.attempted,
+          forbidden_status: postRestoreRetest.forbidden.status,
+          forbidden_passed: postRestoreRetest.forbidden.passed,
+          retest_passed: postRestoreRetest.passed,
+        });
+        postRestoreRetestAuditRecorded = !auditError;
+      } catch { postRestoreRetestAuditRecorded = false; }
+
       return send(response, 200, {
         action: 'restore_one_private_virtual_note',
         restored: true,
@@ -89,6 +180,8 @@ export function createNoteRestoreHandler(authenticate = authenticateStudent) {
         contentSha256: data.contentSha256,
         backupVersion: data.backupVersion,
         auditRecorded: true,
+        postRestoreRetest,
+        postRestoreRetestAuditRecorded,
       });
     } catch {
       return send(response, 503, { error: 'RESTORE_VERIFICATION_FAILED', restoreExecuted: false });
