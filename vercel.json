@@ -32,6 +32,10 @@
   ],
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/index.html"
+    },
+    {
       "source": "/api/notes/audit",
       "destination": "/api/restore-note?action=audit"
     },
