@@ -32,12 +32,20 @@
   ],
   "rewrites": [
     {
+      "source": "/api/notes/audit",
+      "destination": "/api/restore-note?action=audit"
+    },
+    {
+      "source": "/api/operations",
+      "destination": "/api/restore-note?action=operations"
+    },
+    {
       "source": "/api/restore/notes/:id",
-      "destination": "/api/restore-note?id=:id"
+      "destination": "/api/restore-note?action=restore&id=:id"
     },
     {
       "source": "/api/notes/restore/:id",
-      "destination": "/api/restore-note?id=:id"
+      "destination": "/api/restore-note?action=restore&id=:id"
     }
   ]
 }
