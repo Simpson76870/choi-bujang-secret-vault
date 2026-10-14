@@ -88,6 +88,156 @@ test('policy preview stops rather than fabricating a current test policy row', a
   assert.deepEqual(response.payload, { error: 'TEST_POLICY_STATE_UNAVAILABLE', backupVersion: 'stage9-safe-policy-v1', restoreExecuted: false });
 });
 
+test('policy restore re-reads and re-verifies the backup immediately before mutation', async () => {
+  const backup = await loadVerifiedPolicyBackup();
+  const currentPolicy = structuredClone(backup.policy);
+  currentPolicy.defaultDecision = 'allow';
+  const current = {
+    id: 'active', version: 'test-mutated-v1', policy: currentPolicy,
+    policy_sha256: policyDigest(currentPolicy),
+  };
+  let backupReads = 0;
+  let rpcCalls = 0;
+  let rpcArgs = null;
+  const supabase = {
+    from(table) {
+      assert.equal(table, 'training_test_policy_state');
+      return {
+        select() { return this; },
+        eq(field, value) { assert.equal(field, 'id'); assert.equal(value, 'active'); return this; },
+        maybeSingle: async () => ({ data: current, error: null }),
+      };
+    },
+    rpc: async (name, args) => {
+      assert.equal(name, 'restore_stage10_test_policy');
+      rpcCalls += 1;
+      rpcArgs = args;
+      return { data: { auditRecorded: true }, error: null };
+    },
+  };
+  const handler = createPolicyRestoreHandler({
+    runtimeLoader: async () => ({
+      verifyLoginAuthorization: async () => ({ kind: 'judge', userId: OWNER_B }),
+      supabase,
+    }),
+    backupLoader: async () => {
+      backupReads += 1;
+      return structuredClone(backup);
+    },
+  });
+  const response = responseRecorder();
+  await handler({
+    method: 'POST',
+    headers: { authorization: 'Bearer valid-judge' },
+    body: {
+      backupVersion: backup.backupVersion,
+      confirm: true,
+      expectedCurrentSha256: policyDigest(currentPolicy),
+    },
+  }, response);
+
+  assert.equal(backupReads, 2, 'load once for the request and again immediately before mutation');
+  assert.equal(rpcCalls, 1);
+  assert.equal(rpcArgs.p_backup_version, backup.backupVersion);
+  assert.equal(rpcArgs.p_backup_policy_sha256, policyDigest(backup.policy));
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.restored, true);
+  assert.equal(response.payload.operationalPolicyTouched, false);
+});
+
+test('policy restore stops without mutation when re-reading the backup fails verification', async () => {
+  const backup = await loadVerifiedPolicyBackup();
+  const currentPolicy = structuredClone(backup.policy);
+  currentPolicy.defaultDecision = 'allow';
+  const current = {
+    id: 'active', version: 'test-mutated-v1', policy: currentPolicy,
+    policy_sha256: policyDigest(currentPolicy),
+  };
+  let backupReads = 0;
+  let rpcCalls = 0;
+  const supabase = {
+    from() {
+      return {
+        select() { return this; }, eq() { return this; },
+        maybeSingle: async () => ({ data: current, error: null }),
+      };
+    },
+    rpc: async () => { rpcCalls += 1; return { data: {}, error: null }; },
+  };
+  const handler = createPolicyRestoreHandler({
+    runtimeLoader: async () => ({
+      verifyLoginAuthorization: async () => ({ kind: 'judge', userId: OWNER_B }),
+      supabase,
+    }),
+    backupLoader: async () => {
+      backupReads += 1;
+      if (backupReads === 1) return structuredClone(backup);
+      throw new Error('POLICY_BACKUP_INTEGRITY_FAILED');
+    },
+  });
+  const response = responseRecorder();
+  await handler({
+    method: 'POST',
+    headers: { authorization: 'Bearer valid-judge' },
+    body: {
+      backupVersion: backup.backupVersion,
+      confirm: true,
+      expectedCurrentSha256: policyDigest(currentPolicy),
+    },
+  }, response);
+
+  assert.equal(backupReads, 2);
+  assert.equal(rpcCalls, 0, 'verified backup failure must stop before the mutation RPC');
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.payload.error, 'POLICY_BACKUP_INVALID');
+  assert.equal(response.payload.restoreExecuted, false);
+});
+
+test('policy restore stops when the backup changes between request reads', async () => {
+  const backup = await loadVerifiedPolicyBackup();
+  const changedBackup = structuredClone(backup);
+  changedBackup.policy.defaultDecision = 'allow';
+  const currentPolicy = structuredClone(backup.policy);
+  currentPolicy.defaultDecision = 'allow';
+  let backupReads = 0;
+  let rpcCalls = 0;
+  const supabase = {
+    from() {
+      return {
+        select() { return this; }, eq() { return this; },
+        maybeSingle: async () => ({ data: {
+          id: 'active', version: 'test-mutated-v1',
+          policy: currentPolicy, policy_sha256: policyDigest(currentPolicy),
+        }, error: null }),
+      };
+    },
+    rpc: async () => { rpcCalls += 1; return { data: {}, error: null }; },
+  };
+  const handler = createPolicyRestoreHandler({
+    runtimeLoader: async () => ({
+      verifyLoginAuthorization: async () => ({ kind: 'judge', userId: OWNER_B }),
+      supabase,
+    }),
+    backupLoader: async () => (++backupReads === 1 ? structuredClone(backup) : changedBackup),
+  });
+  const response = responseRecorder();
+  await handler({
+    method: 'POST',
+    headers: { authorization: 'Bearer valid-judge' },
+    body: {
+      backupVersion: backup.backupVersion,
+      confirm: true,
+      expectedCurrentSha256: policyDigest(currentPolicy),
+    },
+  }, response);
+
+  assert.equal(backupReads, 2);
+  assert.equal(rpcCalls, 0);
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.payload.error, 'POLICY_BACKUP_CHANGED');
+  assert.equal(response.payload.restoreExecuted, false);
+});
+
 test('B note restore stops without verified pre-incident row and never calls mutation RPC', async () => {
   let rpcCalled = false;
   const supabase = memoryQuery(null);
