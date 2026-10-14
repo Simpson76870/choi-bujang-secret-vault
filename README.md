@@ -146,29 +146,32 @@ npm run build
 
 8단계에서 `npm run decider:test`는 제공된 본인 메모 fixture와 다른 주체·반·프로젝트·기기·자원 경로의 거부를 기본 설정 그대로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
 
-## 10단계 저장점: 검증된 백업에서 제한적으로 복구합니다
+## 10단계 저장점: 환경 변수 사본 복구와 사후 재시험
 
-### 안전 정책 미리보기와 시험 정책 복구
+### 단일 B 메모 복구 계약
 
-- `backups/policies/stage9-safe-policy.json`은 9단계 시작 직전 커밋 `f1dfff0d44c5c08e68fcf3e10b0075609f5e2269`의 판정기·설정 파일 blob 식별자를 근거로 삼는 기준본입니다. `src/restore-runtime.mjs`는 기준본의 원문 SHA-256과 출처를 확인합니다. 파일이 없거나 검증이 실패하면 복구를 중단합니다.
-- `GET /api/restore-policy`는 유효한 심판 발급자 토큰만 허용하고, 현재 별도 시험 정책과 기준본의 변경 경로·버전·범위만 반환합니다. 실제 정책 값과 메모 본문은 미리보기에 포함하지 않습니다.
-- `POST /api/restore-policy`는 미리보기에서 확인한 `backupVersion`, `confirm: true`, `expectedCurrentSha256`이 모두 정확히 일치할 때만 복구를 요청합니다. 현재 시험 정책이 중간에 바뀌면 거부합니다. 복구 범위는 `training_test_policy_state` 한 행뿐이며 운영 판정기, 다른 서비스 규칙 및 `aleph.config.json`의 운영 설정은 변경하지 않습니다. 성공한 복구는 별도 감사표에 추가 기록됩니다. POST 처리에서도 변경 직전에 백업 파일을 다시 읽어 원문 SHA-256과 출처를 재검증하고, 처음 읽은 사본과 버전·출처·정책 해시가 다르면 DB 변경 함수를 호출하지 않고 중단합니다. 백업 누락·재검증 실패·사본 변경은 각각 오류로 기록되며 `restoreExecuted: false`를 반환합니다.
+- 복구 사본은 **Git, 현재 메모 행, DB 백업 테이블에서 가져오지 않습니다.** 실행 환경이 서버 전용 변수 `RESTORE_NOTE_SNAPSHOT_BASE64`로 주입한 사본만 사용합니다. 실제 원문 SHA-256은 `RESTORE_NOTE_BACKUP_SHA256`에 별도로 고정되어야 합니다.
+- 추가 환경 설정: `RESTORE_ENABLED=1`, `RESTORE_INCIDENT_AT`, `RESTORE_B_OWNER_ID`, `RESTORE_OPERATOR_USER_ID`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`. 사후 HTTP 재시험 목적지는 `RESTORE_PUBLIC_APP_URL`로 재정의할 수 있으며 기본값은 `aleph.config.json`의 공개 배포 URL입니다. 환경 값 자체는 Git·응답·감사·번들에 기록하지 않습니다.
+- 스냅샷 스키마는 `aleph.recovery.note-backup.v1`이며 `version`, `id`, `ownerId`, `title`, `body`, `capturedAt`, `verifiedAt`, `contentSha256` 필드만 허용합니다. 전체 JSON 원문의 SHA-256과 `JSON.stringify({id, owner_id, title, body})`로 만든 본문·ID·소유자 해시를 각각 `crypto.timingSafeEqual`로 확인합니다. 검증 시각은 사고 시각보다 앞서야 합니다.
+- `GET /api/restore/notes/:id`는 기준 사본과 현재 한 건의 차이 필드, 버전, 해시, 계획 확인값만 반환합니다. 별칭 `GET /api/notes/restore/:id`도 동일한 핸들러로 연결됩니다.
+- `POST /api/restore/notes/:id`는 `{"planSha256":"..."}` 필드 하나만 허용합니다. ID·소유자·역할·제목·본문 등 추가 입력이 있으면 HTTP 400입니다. 실제 소유자는 검증된 Bearer 토큰과 환경의 고정 B 사용자 ID로 결정합니다. 소유자 불일치는 403, 요청 ID가 사본에 없으면 404, 환경 또는 백업 검증 재료가 없거나 검증에 실패하면 503입니다.
+- POST는 미리보기에 사용한 객체를 재사용하지 않습니다. 변경 직전에 환경 변수에서 사본을 다시 읽고 전체·본문 해시를 재검증하며, 계획 이후 현재 메모 상태가 바뀌었으면 거부합니다. 복원 직후 DB를 다시 읽어 ID·소유자·본문 해시를 확인합니다. 응답에는 메모 본문을 넣지 않습니다.
 
-### 시험 계정 B의 메모 한 건 복구
+### 재시험·감사·운영 현황
 
-- `POST /api/restore-note`는 로그인한 계정이 소유한 것으로 확인된 한 건만 대상으로 합니다. 요청 본문은 `noteId`와 `backupVersion`뿐이며 소유자 ID는 서버가 검증한 로그인 세션에서 가져옵니다.
-- 저장된 사본의 ID·소유자·버전·출처·가상 fixture 내용·내용 SHA-256·manifest SHA-256을 모두 비교합니다. 불일치 또는 사본 부재 시 복구를 중단합니다. 성공 응답은 ID·소유자·내용 해시만 반환하며 메모 본문은 감사 로그나 응답에 넣지 않습니다.
-- 감사 이력은 별도 추가 전용 테이블에 남기며 복구 과정에서 삭제·수정하지 않습니다. 기존 현재 행에서 사본을 자동 생성하지 않습니다.
+- 복구 완료 직후 같은 인증 토큰으로 **실제 HTTP GET** 본인 메모 요청과 타인 메모 요청을 다시 실행합니다. 응답의 `restore.retests.normal`은 본인 메모 200 및 ID·제목·본문 일치 여부를, `restore.retests.forbidden`은 타인 메모 404 여부를 표시합니다. 수행하지 못한 시험은 `attempted: false`와 `passed: false`로 남기며 성공으로 꾸미지 않습니다.
+- `GET /api/notes/audit`는 인증 사용자 본인의 감사 항목만 반환합니다. `GET /api/operations`는 확인한 항목을 `measured`, 아직 실행하지 않은 항목을 `not_run`으로 표시합니다.
+- 요청·응답·감사 이력에는 메모 본문, 토큰, 비밀번호를 저장하지 않습니다. 추가 전용 감사 레코드는 서버 함수 프로세스 메모리에 남기며 복구 코드가 이를 수정·삭제하거나 DB 테이블에 감사 행을 추가하지 않습니다. **Vercel 함수의 프로세스 메모리는 영속 저장소가 아니고 인스턴스가 바뀌면 초기화될 수 있습니다.** 따라서 `process_local_append_only` 표시는 내구성 있는 중앙 감사 저장소라는 뜻이 아닙니다.
+- 운영 판정기·다른 규칙·이전 감사 이력은 이 복구 경로에서 변경하지 않습니다. 본인·타인 재시험, 백업 확인, DB readback에서 실제로 확인한 결과만 측정값으로 기록합니다. 1~9단계 재시험을 실제 실행하지 않았다면 `not_run`입니다.
 
-### 경로
+### 정책 사본과 검토 명령
 
-| Method | Path | 목적 |
-| --- | --- | --- |
-| GET | `/api/restore-policy` | 안전 기준본 검증 및 변경 미리보기 |
-| POST | `/api/restore-policy` | 확인된 별도 시험 정책 복구 |
-| POST | `/api/restore-note` | 검증된 가상 메모 한 건 복구 |
+- 검토 가능한 정책 사본은 `backups/step10/safe-policy.json`, 체크섬은 `backups/step10/safe-policy.sha256`에 커밋했습니다. 이는 메모 본문이 아닌 공개 검토용 정책 자료입니다.
+- `npm run restore:plan`은 사본과 체크섬을 다시 읽고 검증해 현재 코드의 읽기 전용 정책 투영과의 변경 경로 및 확인 해시를 `artifacts/restore-plan.json`에 기록합니다.
+- `npm run restore:apply -- --confirm=stage9-safe-policy-v1`는 미리보기 이후 사본 해시와 현재 정책 지문이 바뀌지 않았을 때만 실행합니다. 결과와 검증한 시험 정책은 `artifacts/`에만 출력되며, `src/decider.mjs`·운영 정책·DB·감사 이력은 쓰지 않습니다.
+- `artifacts/`와 `bundle-notes.json`은 `.gitignore`에 포함합니다. `npm run bundle`은 커밋되지 않은 추적 대상 파일이 있으면 실패합니다. 번들 자체의 HTTP 점검은 GET 중심으로 유지하며 복구 POST/PUT을 보내지 않습니다.
 
-### 10단계 확인 및 재시험 순서
+### 확인 순서
 
 ```sh
 npm ci
@@ -178,19 +181,10 @@ npm run test:stage5
 npm run test:stage8
 npm run decider:test
 npm run detect:test
-npm run test:r5
-npm run test:stage3
-npm run test:package
+npm run restore:plan
+npm run restore:apply -- --confirm=stage9-safe-policy-v1
 npm run build
 npm run bundle
 ```
 
-정상 판정은 A가 자기 메모를 읽는 요청은 계속 허용되고, B가 A의 메모를 요청하는 경우는 404로 거부되는 것입니다. 정책 복구 후 6~9단계 가상 판정 시험도 다시 실행합니다. 위 명령을 아직 실행하지 않았다면 통과로 기록하지 않습니다.
-
-**B 메모 백업:** `training_note_backups`에는 Stage 4 가상 fixture에 정의된 기준 제목·본문과 고정 ID·소유자, 출처, 내용 SHA-256 및 manifest SHA-256을 명시적으로 저장합니다. 이 기준 사본은 현재 메모 행을 읽어 복사해 만들지 않습니다. 사본이나 해시 검증에 실패하면 복구는 계속 중단됩니다.
-
-**복구 후 재시험:** B의 인증된 `POST /api/restore-note`가 기준 사본으로 복구에 성공하면, 서버는 전달받은 B의 Bearer 토큰을 사용해 실제 배포의 `GET /api/notes/:id`를 두 번 호출합니다. B 본인 메모는 HTTP 200과 복원된 ID·제목·본문 일치가 필요하고, 다른 소유자 메모는 HTTP 404 `NOTE_NOT_FOUND`여야 합니다. 두 HTTP 상태와 통과 여부는 `training_note_restore_retest_audit` 추가 전용 표에 기록합니다. 다른 소유자 시험 대상을 찾지 못하거나 요청이 실패하면 통과로 꾸미지 않고 미실행/실패로 남깁니다.
-
-**정책 복구 제한:** 별도 시험 정책 상태 행이 준비되지 않은 현재 환경에서는 `/api/restore-policy`가 `TEST_POLICY_STATE_UNAVAILABLE`로 중단됩니다. 운영 판정 정책이나 다른 규칙은 변경하지 않습니다.
-
-**CI와 실운영 검증의 구분:** GitHub Actions의 익명 HTTP 검사는 로그인 복구를 대신하지 않습니다. 복구 후 재시험은 인증된 B 복구 요청이 실제로 성공한 경우에만 실행되며, `postRestoreRetest.passed`가 `true`인 응답과 감사 기록이 있어야 통과로 간주합니다.
+명령의 통과는 해당 로컬 테스트만 증명합니다. 실제 메모 복구 및 사후 HTTP 재시험 통과는 `POST /api/restore/notes/:id` 응답의 `restore.retests.passed === true`와 `GET /api/notes/audit`의 결과 기록으로 확인해야 합니다. 실행하지 않은 단계는 통과했다고 주장하지 않습니다.
