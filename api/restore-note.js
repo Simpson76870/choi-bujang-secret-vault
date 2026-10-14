@@ -221,6 +221,7 @@ export function createNoteRestoreHandler(authenticate = async (...args) => (awai
         action: 'restore_one_private_virtual_note',
         restored: true,
         id: data.noteId,
+        noteId: data.noteId,
         ownerId: data.ownerId,
         contentSha256: data.contentSha256,
         backupVersion: data.backupVersion,
