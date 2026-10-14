@@ -218,6 +218,21 @@ test('corrupted whole snapshot hash stops before any database change', async () 
   assert.deepEqual(instance.db.rows.get(ID), before);
 });
 
+test('restore rereads through the same environment-variable contract as initial verification', async () => {
+  const raw = backupRaw();
+  const env = makeEnv(raw, B);
+  delete env.RESTORE_NOTE_SNAPSHOT_BASE64;
+  env.RESTORE_NOTE_BACKUP_JSON = raw;
+  delete env.RESTORE_NOTE_BACKUP_SHA256;
+  env.RESTORE_NOTE_SNAPSHOT_SHA256 = sha256(raw);
+
+  const instance = harness({ env });
+  const response = await invoke(instance.handler, { method: 'POST' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.restored, true);
+  assert.equal(response.payload.restore.retests.passed, true);
+});
+
 test('a changed snapshot reread is rejected before the store can write', async () => {
   const raw = backupRaw();
   const trustedSha256 = sha256(raw);
