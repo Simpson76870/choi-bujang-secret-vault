@@ -146,6 +146,14 @@ test('environment backup uses a constant-time whole-snapshot hash and a second c
   }), /BACKUP_CONTENT_HASH_MISMATCH/u);
 });
 
+test('snapshot decoder preserves raw JSON and decodes base64 snapshots', async () => {
+  const { decodeSnapshotBase64 } = await import('../src/recovery/note.mjs');
+  const raw = JSON.stringify({ id: ID, ownerId: B });
+  assert.equal(decodeSnapshotBase64(raw), raw);
+  assert.equal(decodeSnapshotBase64(Buffer.from(raw, 'utf8').toString('base64')), raw);
+  assert.equal(decodeSnapshotBase64('not-json-or-base64'), null);
+});
+
 test('private backup contract accepts verified snapshot aliases without invented schema or timestamps', () => {
   const body = 'body from the private snapshot contract';
   const raw = JSON.stringify({
