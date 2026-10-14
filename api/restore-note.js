@@ -3,7 +3,7 @@ import { getNotesRuntime } from '../src/notes-runtime.mjs';
 import {
   decodeSnapshotBase64, previewNoteRestore, restoreNoteOnce, verifyNoteBackup,
 } from '../src/recovery/note.mjs';
-import { appendRecoveryAudit, recordOperation } from '../src/recovery/ledger.mjs';
+import { appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner, recordOperation } from '../src/recovery/ledger.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA = /^[a-f0-9]{64}$/u;
@@ -183,6 +183,54 @@ export function createRestoreHandler({
     noStore(response);
     response.setHeader('X-ALEPH-Recovery-Evidence', 'not-run');
     response.setHeader('X-ALEPH-Live-Retest', 'not-run');
+
+    // Vercel rewrites audit and operations to this same function so process-local
+    // append-only observations have one function instance/runtime scope.
+    if (request.query?.action === 'operations') {
+      if (request.method !== 'GET') {
+        response.setHeader('Allow', 'GET');
+        return send(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      }
+      const report = getOperationsReport();
+      return send(response, 200, {
+        ...report,
+        step: config.step,
+        restoreRoute: config.restoreRoute,
+        auditHistory: {
+          status: report.recoveryAuditEvents > 0 ? 'measured' : 'not_run',
+          entries: report.recoveryAuditEvents,
+          storage: 'process_local_append_only',
+        },
+      });
+    }
+    if (request.query?.action === 'audit') {
+      if (request.method !== 'GET') {
+        response.setHeader('Allow', 'GET');
+        return send(response, 405, { error: 'METHOD_NOT_ALLOWED' });
+      }
+      let authRuntime;
+      try {
+        if (!runtimePromise) runtimePromise = Promise.resolve(runtimeLoader());
+        authRuntime = await runtimePromise;
+      } catch {
+        return send(response, 503, { error: 'RESTORE_SERVICE_UNAVAILABLE' });
+      }
+      let auditIdentity = null;
+      try { auditIdentity = await authRuntime.verifyLoginAuthorization(request.headers?.authorization); }
+      catch { auditIdentity = null; }
+      if (!auditIdentity || auditIdentity.kind !== 'student') {
+        response.setHeader('WWW-Authenticate', 'Bearer');
+        return send(response, 401, { error: 'UNAUTHORIZED' });
+      }
+      return send(response, 200, {
+        schema: 'aleph.note-audit.v1',
+        events: getRecoveryAuditForOwner(auditIdentity.userId),
+        storage: 'process_local_append_only',
+      });
+    }
+    if (request.query?.action && request.query.action !== 'restore') {
+      return send(response, 404, { error: 'ROUTE_NOT_FOUND' });
+    }
 
     if (!['GET', 'POST'].includes(request.method)) {
       response.setHeader('Allow', 'GET, POST');
