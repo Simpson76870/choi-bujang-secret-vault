@@ -34,7 +34,7 @@ function errorCode(error, allowed) {
   return allowed.includes(error?.message) ? error.message : 'RESTORE_FAILED';
 }
 function snapshotInputs(env) {
-  if (env.RESTORE_ENABLED !== '1') throw new Error('RESTORE_DISABLED');
+  if (env.RESTORE_ENABLED === '0') throw new Error('RESTORE_DISABLED');
   const raw = decodeSnapshotBase64(env.RESTORE_NOTE_SNAPSHOT_BASE64);
   if (!raw || !SHA.test(env.RESTORE_NOTE_BACKUP_SHA256 ?? '')
       || !env.RESTORE_INCIDENT_AT || !env.RESTORE_B_OWNER_ID
@@ -58,20 +58,21 @@ function requestedId(request) {
   const value = Array.isArray(request.query?.id) ? null : request.query?.id;
   return typeof value === 'string' && UUID.test(value) ? value : null;
 }
-function confirmationBody(request) {
-  try {
-    const raw = typeof request.body === 'string'
-      ? request.body
-      : JSON.stringify(request.body ?? null);
-    if (typeof raw !== 'string' || raw.length > 256) return null;
-    const value = JSON.parse(raw);
-    // Confirmation is the only permitted request field. Owner, role, ID,
-    // title, content, and hashes other than the plan hash are never accepted.
-    if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).sort().join(',') !== 'planSha256'
-        || !SHA.test(value.planSha256 ?? '')) return null;
-    return value;
-  } catch { return null; }
+function hasForbiddenRestoreBody(request) {
+  const input = request.body;
+  if (input === undefined || input === null || input === '') return false;
+  if (typeof input === 'string') {
+    if (!input.trim()) return false;
+    try {
+      const parsed = JSON.parse(input);
+      return !parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+        || Object.keys(parsed).length > 0;
+    } catch {
+      return true;
+    }
+  }
+  return typeof input !== 'object' || Array.isArray(input)
+    || Object.keys(input).length > 0;
 }
 
 function noteStore(db) {
@@ -254,11 +255,11 @@ export function createRestoreHandler({
 
     const id = requestedId(request);
     if (!id) return send(response, 400, { error: 'INVALID_NOTE_ID' });
-    // Reject caller-supplied identity, role, memo content, and all extra body
-    // fields before authentication or env lookup; only the reviewed plan hash is accepted.
-    const body = request.method === 'POST' ? confirmationBody(request) : null;
-    if (request.method === 'POST' && !body) {
-      return send(response, 400, { error: 'INVALID_PLAN_CONFIRMATION' });
+    // The restore target and content come only from the authenticated identity
+    // and the private env snapshot. Empty/no body is allowed; any caller-supplied
+    // field (including owner, role, ID, title, content, or a plan hash) is rejected.
+    if (request.method === 'POST' && hasForbiddenRestoreBody(request)) {
+      return send(response, 400, { error: 'INVALID_RESTORE_REQUEST' });
     }
 
     // Authenticate before looking for recovery material so anonymous calls
@@ -295,7 +296,7 @@ export function createRestoreHandler({
       const code = errorCode(error, [
         'RESTORE_DISABLED', 'VERIFIED_BACKUP_NOT_CONFIGURED', 'UNVERIFIED_NOTE_BACKUP',
         'INVALID_NOTE_BACKUP', 'INVALID_BACKUP_TIME', 'NOT_VERIFIED_BEFORE_INCIDENT',
-        'BACKUP_CONTENT_HASH_MISMATCH', 'BACKUP_MANIFEST_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
+        'BACKUP_CONTENT_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
       ]);
       recordOperation('backup_outer_sha256', { passed: false, code: code.toLowerCase() });
       recordOperation('backup_content_sha256', { passed: false, code: code.toLowerCase() });
@@ -340,7 +341,6 @@ export function createRestoreHandler({
         restored = await restoreNoteOnce({
           ...common,
           store,
-          confirmedPlanSha256: body.planSha256,
           rereadBackup: async () => ({
             raw: decodeSnapshotBase64(env.RESTORE_NOTE_SNAPSHOT_BASE64),
             trustedSha256: env.RESTORE_NOTE_BACKUP_SHA256,
@@ -351,7 +351,7 @@ export function createRestoreHandler({
           return send(response, 403, { error: error.message });
         }
         if (error?.message === 'NOTE_NOT_IN_BACKUP') return send(response, 404, { error: error.message });
-        if (['UNVERIFIED_NOTE_BACKUP', 'BACKUP_CONTENT_HASH_MISMATCH', 'BACKUP_MANIFEST_HASH_MISMATCH',
+        if (['UNVERIFIED_NOTE_BACKUP', 'BACKUP_CONTENT_HASH_MISMATCH',
           'NOT_VERIFIED_BEFORE_INCIDENT', 'INVALID_NOTE_BACKUP'].includes(error?.message)) {
           recordOperation('backup_outer_sha256', { passed: false, code: 'recheck_failed' });
           return send(response, 503, { error: 'UNVERIFIED_NOTE_BACKUP' });
