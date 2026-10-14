@@ -26,7 +26,6 @@ function backupRaw(overrides = {}) {
   const ownerId = overrides.ownerId ?? overrides.owner_id ?? B;
   const fields = { ...overrides };
   delete fields.ownerId;
-  delete fields.owner_id;
   const row = {
     note_id: ID,
     owner_id: ownerId,
