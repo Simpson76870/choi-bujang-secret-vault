@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createLoginVerifier } from './verify-login.mjs';
 import config from '../aleph.config.json' with { type: 'json' };
 
+export const JUDGE_B_FIXTURE_USER_ID = '00000000-0000-4000-8000-000000000002';
+
 let runtimePromise;
 
 export async function getNotesRuntime() {
@@ -81,7 +83,7 @@ export async function authenticateStudent(request, response) {
     if (bFixtureRead) {
       return { ...runtime, identity: {
         kind: 'student',
-        userId: '00000000-0000-4000-8000-000000000002',
+        userId: JUDGE_B_FIXTURE_USER_ID,
         isInstructor: false,
       } };
     }
