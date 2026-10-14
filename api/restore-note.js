@@ -228,7 +228,9 @@ export function createRestoreHandler({
         storage: 'process_local_append_only',
       });
     }
-    if (request.query?.action && request.query.action !== 'restore') {
+    // Expose recovery only via the two configured URL rewrites. The backing
+    // function URL without an explicit restore action is not a public restore route.
+    if (request.query?.action !== 'restore') {
       return send(response, 404, { error: 'ROUTE_NOT_FOUND' });
     }
 
@@ -251,6 +253,7 @@ export function createRestoreHandler({
       const status = code === 'RESTORE_DISABLED' || code === 'VERIFIED_BACKUP_NOT_CONFIGURED'
         || code === 'UNVERIFIED_NOTE_BACKUP' ? 503 : 503;
       recordOperation('backup_outer_sha256', { passed: false, code: code.toLowerCase() });
+      recordOperation('backup_content_sha256', { passed: false, code: code.toLowerCase() });
       return send(response, status, { error: code });
     }
 
