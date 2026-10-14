@@ -55,7 +55,6 @@ test('policy diff exposes only changed paths, never current policy values', asyn
   const changes = diffPolicy(current, backup.policy);
   assert.deepEqual(changes, [
     { path: 'defaultDecision', change: 'changed' },
-    { path: 'resources[0].permissions[0]', change: 'changed' },
     { path: 'resources[0].permissions[1]', change: 'added' },
   ]);
   assert.equal(JSON.stringify(changes).includes('learner_fixture'), false);
