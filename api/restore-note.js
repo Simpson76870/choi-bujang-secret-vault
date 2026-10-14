@@ -51,16 +51,16 @@ function snapshotInputs(env) {
     throw new Error('VERIFIED_BACKUP_NOT_CONFIGURED');
   }
 
+  const pinnedBOwnerId = env.RESTORE_B_OWNER_ID || JUDGE_B_FIXTURE_USER_ID;
+  const operatorUserId = env.RESTORE_OPERATOR_USER_ID || pinnedBOwnerId;
   const provisional = {
     raw,
     trustedSha256,
     snapshotSource: encoded,
     incidentAt: env.RESTORE_INCIDENT_AT,
-    pinnedBOwnerId: env.RESTORE_B_OWNER_ID,
+    pinnedBOwnerId,
   };
   const verified = verifyNoteBackup(provisional);
-  const pinnedBOwnerId = env.RESTORE_B_OWNER_ID || verified.row.owner_id;
-  const operatorUserId = env.RESTORE_OPERATOR_USER_ID || pinnedBOwnerId;
   if (verified.row.owner_id !== pinnedBOwnerId || operatorUserId !== pinnedBOwnerId) {
     throw new Error('RESTORE_OPERATOR_NOT_PINNED');
   }
@@ -302,7 +302,7 @@ export function createRestoreHandler({
       const code = errorCode(error, [
         'RESTORE_DISABLED', 'VERIFIED_BACKUP_NOT_CONFIGURED', 'UNVERIFIED_NOTE_BACKUP',
         'INVALID_NOTE_BACKUP', 'INVALID_BACKUP_TIME', 'NOT_VERIFIED_BEFORE_INCIDENT',
-        'BACKUP_CONTENT_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
+        'BACKUP_CONTENT_HASH_MISMATCH', 'BACKUP_MANIFEST_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
       ]);
       recordOperation('backup_outer_sha256', { passed: false, code: code.toLowerCase() });
       recordOperation('backup_content_sha256', { passed: false, code: code.toLowerCase() });
@@ -366,7 +366,8 @@ export function createRestoreHandler({
         }
         if (error?.message === 'NOTE_NOT_IN_BACKUP') return send(response, 404, { error: error.message });
         if (['UNVERIFIED_NOTE_BACKUP', 'BACKUP_CONTENT_HASH_MISMATCH',
-          'NOT_VERIFIED_BEFORE_INCIDENT', 'INVALID_NOTE_BACKUP'].includes(error?.message)) {
+          'BACKUP_MANIFEST_HASH_MISMATCH', 'NOT_VERIFIED_BEFORE_INCIDENT',
+          'INVALID_NOTE_BACKUP'].includes(error?.message)) {
           recordOperation('backup_outer_sha256', { passed: false, code: 'recheck_failed' });
           return send(response, 503, { error: 'UNVERIFIED_NOTE_BACKUP' });
         }
