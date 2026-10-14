@@ -241,6 +241,12 @@ export function createRestoreHandler({
 
     const id = requestedId(request);
     if (!id) return send(response, 400, { error: 'INVALID_NOTE_ID' });
+    // Reject caller-supplied identity, role, memo content, and all extra body
+    // fields before authentication or env lookup; only the reviewed plan hash is accepted.
+    const body = request.method === 'POST' ? confirmationBody(request) : null;
+    if (request.method === 'POST' && !body) {
+      return send(response, 400, { error: 'INVALID_PLAN_CONFIRMATION' });
+    }
 
     // Authenticate before looking for recovery material so anonymous calls
     // consistently receive JSON 401 even when the snapshot is intentionally absent.
@@ -315,8 +321,6 @@ export function createRestoreHandler({
         return send(response, 200, plan);
       }
 
-      const body = confirmationBody(request);
-      if (!body) return send(response, 400, { error: 'INVALID_PLAN_CONFIRMATION' });
       let restored;
       try {
         restored = await restoreNoteOnce({
