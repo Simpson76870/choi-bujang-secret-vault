@@ -7,6 +7,7 @@ import {
   appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner,
 } from '../src/recovery/ledger.mjs';
 import { createRestoreHandler } from '../api/restore-note.js';
+import { JUDGE_B_FIXTURE_USER_ID } from '../src/notes-runtime.mjs';
 
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -19,25 +20,26 @@ const verifiedAt = '2026-10-02T00:00:00.000Z';
 const incidentAt = '2026-10-03T00:00:00.000Z';
 
 function backupRaw(overrides = {}) {
+  const ownerId = overrides.ownerId ?? B;
   const row = {
     schema: 'aleph.recovery.note-backup.v1',
     version: 'stage10-safe-v1',
     id: ID,
-    ownerId: B,
+    ownerId,
     title,
     body: backupBody,
     capturedAt,
     verifiedAt,
-    contentSha256: contentSha256({ id: ID, owner_id: B, title, body: backupBody }),
+    contentSha256: contentSha256({ id: ID, owner_id: ownerId, title, body: backupBody }),
     ...overrides,
   };
   return JSON.stringify(row);
 }
-function makeEnv(raw = backupRaw()) {
+function makeEnv(raw = backupRaw(), ownerId = B) {
   return {
     RESTORE_ENABLED: '1',
-    RESTORE_B_OWNER_ID: B,
-    RESTORE_OPERATOR_USER_ID: B,
+    RESTORE_B_OWNER_ID: ownerId,
+    RESTORE_OPERATOR_USER_ID: ownerId,
     RESTORE_NOTE_SNAPSHOT_BASE64: Buffer.from(raw, 'utf8').toString('base64'),
     RESTORE_NOTE_BACKUP_SHA256: sha256(raw),
     RESTORE_INCIDENT_AT: incidentAt,
@@ -94,8 +96,9 @@ function response(status, body) {
   return { status, json: async () => body };
 }
 function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, rows } = {}) {
+  const ownerId = env.RESTORE_B_OWNER_ID ?? B;
   const db = fakeDb(rows ?? [
-    { id: ID, owner_id: B, title: 'tampered title', content: 'tampered text' },
+    { id: ID, owner_id: ownerId, title: 'tampered title', content: 'tampered text' },
     { id: OTHER, owner_id: A, title: 'A stays unchanged', content: 'do not expose' },
   ]);
   const calls = [];
@@ -107,7 +110,7 @@ function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, r
     const id = target.pathname.split('/').pop();
     if (id === ID) {
       const row = db.rows.get(ID);
-      return response(row?.owner_id === B ? 200 : 404, row?.owner_id === B
+      return response(row?.owner_id === ownerId ? 200 : 404, row?.owner_id === ownerId
         ? { id: row.id, title: row.title, body: row.content } : { error: 'NOTE_NOT_FOUND' });
     }
     return response(404, { error: 'NOTE_NOT_FOUND' });
@@ -193,6 +196,43 @@ test('only B with a verified bearer token may restore the pinned backup row', as
   const unauthenticated = harness();
   const responseUnauth = await invoke(unauthenticated.handler, { method: 'GET', token: '' });
   assert.equal(responseUnauth.statusCode, 401);
+});
+
+test('signed ALEPH judge identity B may restore only the pinned B fixture and run both live GET retests', async () => {
+  const raw = backupRaw({ ownerId: JUDGE_B_FIXTURE_USER_ID });
+  const env = makeEnv(raw, JUDGE_B_FIXTURE_USER_ID);
+  const judgeB = { kind: 'judge', userId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', identity: 'b' };
+  const instance = harness({ env, identity: judgeB });
+
+  const plan = await invoke(instance.handler, { method: 'GET' });
+  assert.equal(plan.statusCode, 200);
+  assert.equal(plan.payload.ownerId, JUDGE_B_FIXTURE_USER_ID);
+  assert.equal(plan.payload.backupVersion, 'stage10-safe-v1');
+
+  const applied = await invoke(instance.handler, {
+    method: 'POST', body: { planSha256: plan.payload.planSha256 },
+  });
+  assert.equal(applied.statusCode, 200);
+  assert.equal(applied.payload.restored, true);
+  assert.equal(applied.payload.restore.retests.normal.attempted, true);
+  assert.equal(applied.payload.restore.retests.normal.passed, true);
+  assert.equal(applied.payload.restore.retests.forbidden.attempted, true);
+  assert.equal(applied.payload.restore.retests.forbidden.passed, true);
+  assert.equal(applied.payload.restore.retests.passed, true);
+  assert.deepEqual(instance.calls, ['/api/notes/' + ID, '/api/notes/' + OTHER]);
+
+  const audit = await invoke(instance.handler, { method: 'GET', action: 'audit' });
+  assert.equal(audit.statusCode, 200);
+  assert.ok(audit.payload.events.some(event => event.noteId === ID));
+  assert.ok(audit.payload.events.every(event => !Object.hasOwn(event, 'ownerId')));
+
+  const judgeA = harness({
+    env,
+    identity: { kind: 'judge', userId: 'ffffffff-ffff-4fff-8fff-ffffffffffff', identity: 'a' },
+  });
+  const deniedJudgeA = await invoke(judgeA.handler, { method: 'GET' });
+  assert.equal(deniedJudgeA.statusCode, 403);
+  assert.equal(deniedJudgeA.payload.error, 'RESTORE_NOT_AUTHORIZED');
 });
 
 test('extra request-body owner, role, ID or content fields are rejected with 400', async () => {
