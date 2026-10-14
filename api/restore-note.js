@@ -324,8 +324,8 @@ export function createRestoreHandler({
       return send(response, 503, { error: 'UNVERIFIED_NOTE_BACKUP' });
     }
     if (id !== snapshot.row.id) return send(response, 404, { error: 'NOTE_NOT_IN_BACKUP' });
-    if (restoreIdentity.userId !== env.RESTORE_B_OWNER_ID
-        || restoreIdentity.userId !== env.RESTORE_OPERATOR_USER_ID
+    if (restoreIdentity.userId !== inputs.pinnedBOwnerId
+        || restoreIdentity.userId !== inputs.operatorUserId
         || restoreIdentity.userId !== snapshot.row.owner_id) {
       return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
     }
@@ -355,10 +355,12 @@ export function createRestoreHandler({
         restored = await restoreNoteOnce({
           ...common,
           store,
-          rereadBackup: async () => ({
-            raw: decodeSnapshotBase64(env.RESTORE_NOTE_SNAPSHOT_BASE64),
-            trustedSha256: env.RESTORE_NOTE_BACKUP_SHA256,
-          }),
+          // Read and validate through the exact same env contract as the first
+          // verification, including alternate runner-provided variable names.
+          rereadBackup: async () => {
+            const fresh = snapshotInputs(env);
+            return { raw: fresh.raw, trustedSha256: fresh.trustedSha256 };
+          },
         });
       } catch (error) {
         if (error?.message === 'RESTORE_NOT_AUTHORIZED' || error?.message === 'NOTE_OWNER_CONFLICT') {
