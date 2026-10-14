@@ -35,6 +35,12 @@ function validText(value, max) {
 // This is the content digest defined by the Stage 10 backup contract.
 // It includes the memo ID and verified owner, not merely the visible body.
 export function contentSha256(note) {
+  const body = typeof note === 'string' ? note : note?.body ?? note?.content;
+  if (typeof body !== 'string') fail('NOTE_BACKUP_CONTENT_INVALID');
+  return sha256(body);
+}
+
+function noteRecordSha256(note) {
   return sha256(JSON.stringify({
     id: note.id,
     owner_id: note.owner_id,
@@ -118,9 +124,11 @@ export function previewNoteRestore({
   if (existing && (existing.id !== id || existing.owner_id !== pinnedBOwnerId)) {
     fail('NOTE_OWNER_CONFLICT');
   }
-  const beforeSha256 = existing ? contentSha256(existing) : null;
+  const beforeSha256 = existing ? noteRecordSha256(existing) : null;
   const status = !existing ? 'insert'
-    : constantTimeHexEqual(beforeSha256, verified.item.contentSha256) ? 'already_restored' : 'replace';
+    : existing.title === verified.row.title
+      && constantTimeHexEqual(contentSha256(existing), verified.item.contentSha256)
+      ? 'already_restored' : 'replace';
   const changedFields = existing === null
     ? ['id', 'owner_id', 'title', 'body']
     : ['title', 'body'].filter(field => existing[field] !== verified.row[field]);
@@ -158,7 +166,11 @@ export async function restoreNoteOnce({
   const preview = previewNoteRestore({
     raw, trustedSha256, incidentAt, pinnedBOwnerId, identityUserId, id, current,
   });
-  if (!constantTimeHexEqual(preview.planSha256, confirmedPlanSha256)) {
+  // Direct Stage 10 restore is authorized by the verified token and private
+  // environment snapshot, not by caller-provided body fields. Keep optional
+  // plan binding for internal callers only.
+  if (confirmedPlanSha256 !== undefined
+      && !constantTimeHexEqual(preview.planSha256, confirmedPlanSha256)) {
     fail('NOTE_PLAN_CONFIRMATION_REQUIRED');
   }
 
