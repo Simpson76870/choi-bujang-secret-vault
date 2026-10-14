@@ -152,6 +152,7 @@ npm run build
 
 - 복구 사본은 **Git, 현재 메모 행, DB 백업 테이블에서 가져오지 않습니다.** 실행 환경이 서버 전용 변수 `RESTORE_NOTE_SNAPSHOT_BASE64`로 주입한 사본만 사용합니다. 실제 원문 SHA-256은 `RESTORE_NOTE_BACKUP_SHA256`에 별도로 고정되어야 합니다.
 - 추가 환경 설정: `RESTORE_ENABLED=1`, `RESTORE_INCIDENT_AT`, `RESTORE_B_OWNER_ID`, `RESTORE_OPERATOR_USER_ID`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`. 사후 HTTP 재시험 목적지는 `RESTORE_PUBLIC_APP_URL`로 재정의할 수 있으며 기본값은 `aleph.config.json`의 공개 배포 URL입니다. 환경 값 자체는 Git·응답·감사·번들에 기록하지 않습니다.
+- Vercel 운영 환경의 `RESTORE_*` 값은 비공개 민감 변수로만 보관합니다. 검증된 B 가상 메모 사본과 원문 체크섬은 저장소 파일·HTML·응답·감사 이력에 복사하지 않습니다.
 - 복구 사본은 고정된 `stage4-b-preincident-v1` 시험 메모 스키마(`note_id`, `owner_id`, `fixture_key`, `backup_version`, `title`, `content`, `content_sha256`, `source_commit`, `verified_at`, `manifest_sha256`)여야 합니다. `src/restore-runtime.mjs`의 출처·소유자·제목·본문 검증과 매니페스트 검증이 모두 통과해야 합니다. 원문 JSON SHA-256, 본문 SHA-256, 매니페스트 SHA-256은 상수 시간 비교로 확인하고 `verified_at`이 `RESTORE_INCIDENT_AT`보다 늦거나 같으면 중단합니다.
 - `GET /api/restore/notes/:id`는 기준 사본과 현재 한 건의 차이 필드, 버전, 해시, 계획 확인값만 반환합니다. 별칭 `GET /api/notes/restore/:id`도 동일한 핸들러로 연결됩니다.
 - `POST /api/restore/notes/:id`는 `{"planSha256":"..."}` 필드 하나만 허용합니다. ID·소유자·역할·제목·본문 등 추가 입력이 있으면 HTTP 400입니다. 실제 소유자는 검증된 Bearer 토큰과 환경의 고정 B 사용자 ID로 결정합니다. 소유자 불일치는 403, 요청 ID가 사본에 없으면 404, 환경 또는 백업 검증 재료가 없거나 검증에 실패하면 503입니다.
