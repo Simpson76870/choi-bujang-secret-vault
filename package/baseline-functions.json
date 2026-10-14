@@ -9,7 +9,6 @@
     "api/notes/[id].js",
     "api/notices/[id].js",
     "api/threat-intel.js",
-    "api/restore-note.js",
-    "api/restore-policy.js"
+    "api/restore-note.js"
   ]
 }
