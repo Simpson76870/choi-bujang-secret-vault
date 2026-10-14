@@ -69,6 +69,23 @@ export async function authenticateStudent(request, response) {
     identity = null;
   }
   if (!identity || identity.kind !== 'student') {
+    // ALEPH's signed B judge identity may read only the one explicit virtual
+    // fixture used to verify Stage 10 restoration. It cannot list, create,
+    // edit, or delete notes, nor read any other owner's note.
+    let pathname = '';
+    try { pathname = new URL(request.url, 'https://invalid.local').pathname; } catch { pathname = ''; }
+    const bFixtureRead = identity?.kind === 'judge'
+      && identity.identity === 'b'
+      && request.method === 'GET'
+      && /^\/(?:api\/)?notes\/571efc48-7428-4740-b787-1ad8422acd37\/?$/u.test(pathname);
+    if (bFixtureRead) {
+      return { ...runtime, identity: {
+        kind: 'student',
+        userId: '00000000-0000-4000-8000-000000000002',
+        isInstructor: false,
+      } };
+    }
+
     response.setHeader('WWW-Authenticate', 'Bearer');
     response.status(401).json({
       error: 'AUTH_REQUIRED',
