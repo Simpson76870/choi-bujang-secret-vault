@@ -50,7 +50,11 @@ test('stage 5 source URL is query-free HTTPS and route allowlist is present', as
     'PUT /api/announcements/:id',
     'GET /api/notices/:id',
     'PUT /api/notices/:id',
+    'GET /api/restore-policy',
+    'POST /api/restore-policy',
+    'POST /api/restore-note',
   ]);
+  assert.equal(config.restoreRoute, 'POST /api/restore-note');
 });
 
 test('permission SQL revokes direct privileges only from the training_notes table', async () => {

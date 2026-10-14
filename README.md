@@ -1,4 +1,4 @@
-# BYTE BACK 방어전 시작 틀 — 9단계 저장점
+# BYTE BACK 방어전 시작 틀 — 10단계 저장점
 
 이 저장소는 자료 보호 실습용입니다. 화면과 데이터베이스에는 가상 학습 메모만 사용하세요. 실제 개인정보, 토큰, 비밀번호 또는 서버 전용 키를 코드·Git·로그·제출 묶음에 넣지 마세요.
 
@@ -59,7 +59,7 @@ Vercel 프로젝트의 Settings → Environment Variables에서 서버 전용 �
 
 ## 5단계: 자료 요청을 서버 한곳으로 모읍니다
 
-- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 9입니다.
+- `aleph.config.json`의 `allowedRoutes`에는 위의 다섯 API 경로가 기록되어 있으며, 현재 단계는 10입니다.
 - `originalApiUrl`은 쿼리 문자열이 없는 원본 Data API 경로 `https://hjuczlxovnghkljzygoz.supabase.co/rest/v1/training_notes`입니다.
 - `vercel.json`은 첫 HTML 응답에 `X-Content-Type-Options: nosniff`, `Content-Security-Policy` 등 보안 헤더를 설정합니다.
 - `supabase/stage5-training-notes-direct-access.sql`의 권한 회수문은 현재 학습용 Supabase DB에 적용했습니다. 적용 후 `anon`과 `authenticated`의 SELECT·INSERT·UPDATE·DELETE 유효 권한이 모두 `false`이고, `service_role`의 서버 권한은 유지되는 것을 직접 조회해 확인했습니다. 다른 테이블은 건드리지 않습니다.
@@ -141,7 +141,52 @@ npm run build
 - 시크릿 창에서 로그인하지 않은 상태로 `GET /api/notes`와 `GET /api/notes/:id`를 요청하면 JSON 오류와 HTTP 401이 반환됩니다.
 - A는 본인 메모를 읽고 추가·수정·삭제할 수 있고, B는 A의 메모를 읽거나 변경·삭제할 수 없어야 합니다. Stage 4/5 자동 테스트는 별도 가상 A/B ID를 사용해 소유자 검사를 검증하지만, 실제 배포의 A/B 로그인 세션 검증은 두 테스트 계정으로 별도 수행해야 합니다.
 - 공개 키만으로 원본 Data API를 호출해도 데이터가 반환되지 않는지 확인합니다. DB 권한 조회에서는 `anon`·`authenticated`의 메모 테이블 직접 CRUD가 모두 거부되는 것을 확인했습니다.
-- `/aleph.json`이 열리고 단계가 9이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
+- `/aleph.json`이 열리고 단계가 10이며, 첫 HTML 응답에 `X-Content-Type-Options: nosniff` 또는 CSP 보안 헤더가 있습니다.
 - 브라우저의 메모 CRUD 요청은 `/api/notes` 경로만 사용합니다. Auth 호출은 이번 단계에서 변경하지 않았습니다.
 
 8단계에서 `npm run decider:test`는 제공된 본인 메모 fixture와 다른 주체·반·프로젝트·기기·자원 경로의 거부를 기본 설정 그대로 확인합니다. `npm run test:stage8`은 API가 저장된 소유자·강사 권한을 재검사하는지 확인합니다. 제출 묶음은 깨끗한 Git 작업 트리와 실제 배포 주소에 대한 HTTP 점검이 필요합니다. `bundle-notes.json`과 `artifacts/submission.json`은 Git에 커밋하지 마세요. `npm run bundle`은 GitHub Actions에서 실제 요청을 보내고 관찰한 자기 점검 결과를 제출 JSON에 기록합니다. 실행하지 않은 점검은 통과했다고 쓰지 않습니다.
+
+## 10단계 저장점: 검증된 백업에서 제한적으로 복구합니다
+
+### 안전 정책 미리보기와 시험 정책 복구
+
+- `backups/policies/stage9-safe-policy.json`은 9단계 시작 직전 커밋 `f1dfff0d44c5c08e68fcf3e10b0075609f5e2269`의 판정기·설정 파일 blob 식별자를 근거로 삼는 기준본입니다. `src/restore-runtime.mjs`는 기준본의 원문 SHA-256과 출처를 확인합니다. 파일이 없거나 검증이 실패하면 복구를 중단합니다.
+- `GET /api/restore-policy`는 유효한 심판 발급자 토큰만 허용하고, 현재 별도 시험 정책과 기준본의 변경 경로·버전·범위만 반환합니다. 실제 정책 값과 메모 본문은 미리보기에 포함하지 않습니다.
+- `POST /api/restore-policy`는 미리보기에서 확인한 `backupVersion`, `confirm: true`, `expectedCurrentSha256`이 모두 정확히 일치할 때만 복구를 요청합니다. 현재 시험 정책이 중간에 바뀌면 거부합니다. 복구 범위는 `training_test_policy_state` 한 행뿐이며 운영 판정기, 다른 서비스 규칙 및 `aleph.config.json`의 운영 설정은 변경하지 않습니다. 성공한 복구는 별도 감사표에 추가 기록됩니다.
+
+### 시험 계정 B의 메모 한 건 복구
+
+- `POST /api/restore-note`는 로그인한 계정이 소유한 것으로 확인된 한 건만 대상으로 합니다. 요청 본문은 `noteId`와 `backupVersion`뿐이며 소유자 ID는 서버가 검증한 로그인 세션에서 가져옵니다.
+- 저장된 사본의 ID·소유자·버전·출처·가상 fixture 내용·내용 SHA-256·manifest SHA-256을 모두 비교합니다. 불일치 또는 사본 부재 시 복구를 중단합니다. 성공 응답은 ID·소유자·내용 해시만 반환하며 메모 본문은 감사 로그나 응답에 넣지 않습니다.
+- 감사 이력은 별도 추가 전용 테이블에 남기며 복구 과정에서 삭제·수정하지 않습니다. 기존 현재 행에서 사본을 자동 생성하지 않습니다.
+
+### 경로
+
+| Method | Path | 목적 |
+| --- | --- | --- |
+| GET | `/api/restore-policy` | 안전 기준본 검증 및 변경 미리보기 |
+| POST | `/api/restore-policy` | 확인된 별도 시험 정책 복구 |
+| POST | `/api/restore-note` | 검증된 가상 메모 한 건 복구 |
+
+### 10단계 확인 및 재시험 순서
+
+```sh
+npm ci
+npm run test:stage10
+npm run test:stage4
+npm run test:stage5
+npm run test:stage8
+npm run decider:test
+npm run detect:test
+npm run test:r5
+npm run test:stage3
+npm run test:package
+npm run build
+npm run bundle
+```
+
+정상 판정은 A가 자기 메모를 읽는 요청은 계속 허용되고, B가 A의 메모를 요청하는 경우는 404로 거부되는 것입니다. 정책 복구 후 6~9단계 가상 판정 시험도 다시 실행합니다. 위 명령을 아직 실행하지 않았다면 통과로 기록하지 않습니다.
+
+**현재 복구 제한:** 연결된 Supabase 프로젝트를 확인했을 때 복구/감사 테이블과 B의 사전 검증 메모 사본은 존재하지 않았습니다. SQL 마이그레이션은 별도 복구 테이블만 추가하며 기존 메모에서 사본을 자동 생성하지 않습니다. 사전 검증 백업 행과 현재 시험 정책 행이 안전한 출처에서 준비되기 전에는 각각 `VERIFIED_BACKUP_UNAVAILABLE` 또는 `TEST_POLICY_STATE_UNAVAILABLE`로 중단됩니다. 따라서 실제 메모 복원이나 정책 롤백을 완료했다고 주장하지 않습니다.
+
+**실운영·심판 검증 범위:** 자동 제출 점검은 인증 없는 복구 요청이 HTTP 401/403과 JSON 오류로 거부되는지만 측정합니다. 로그인한 B의 복구와 A/B 정상·금지 요청은 별도 계정으로 재시험해야 합니다.

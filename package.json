@@ -15,7 +15,8 @@
     "test:stage4": "node --test test/stage4.test.mjs",
     "test:stage5": "node --test test/stage5.test.mjs",
     "test:stage8": "node --test test/stage8.test.mjs",
-    "test:stage9": "node --test test/detect-stage9.test.mjs"
+    "test:stage9": "node --test test/detect-stage9.test.mjs",
+    "test:stage10": "node --test test/stage10.test.mjs"
   },
   "engines": {
     "node": ">=22"

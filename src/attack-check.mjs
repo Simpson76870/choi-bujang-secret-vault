@@ -1,7 +1,7 @@
 // Self-check records only observations from actual HTTP requests, not judge decisions.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) {
-    throw new Error('현재 자기 점검은 1~9단계만 지원합니다.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) {
+    throw new Error('현재 자기 점검은 1~10단계만 지원합니다.');
   }
 
   let app;
@@ -203,6 +203,33 @@ export async function runAttackChecks(config) {
       observed: anonDenied ? 'anon direct Data API는 권한 오류로 거부함 (HTTP ' + dataApiStatus + ')'
         : 'anon direct Data API 권한 거부를 확인하지 못함 (HTTP ' + dataApiStatus + ')',
     });
+  }
+  if (config.step >= 10) {
+    for (const [attackId, path, method, body] of [
+      ['restore_policy_unauthenticated', '/api/restore-policy', 'GET', undefined],
+      ['restore_note_unauthenticated', '/api/restore-note', 'POST', '{}'],
+    ]) {
+      let status = 0;
+      let isJson = false;
+      let hasError = false;
+      try {
+        const response = await fetch(new URL(path, app), {
+          method, headers: body ? { 'Content-Type': 'application/json' } : undefined,
+          body, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+        });
+        status = response.status;
+        isJson = (response.headers.get('content-type') || '').toLowerCase().includes('application/json');
+        const payload = await response.json().catch(() => null);
+        hasError = typeof payload?.error === 'string' && payload.error.length > 0;
+      } catch { status = 0; }
+      const denied = [401, 403].includes(status) && isJson && hasError;
+      checks.push({
+        attackId,
+        expected: '복구 경로는 인증 없는 요청을 JSON 오류로 거부',
+        observed: denied ? '인증 없는 복구 요청을 JSON 오류로 거부함 (HTTP ' + status + ')'
+          : '복구 경로의 인증 거부를 확인하지 못함 (HTTP ' + status + ')',
+      });
+    }
   }
   return checks;
 }

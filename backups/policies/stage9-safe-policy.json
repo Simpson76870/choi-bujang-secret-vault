@@ -1,0 +1,42 @@
+{
+  "schema": "aleph.safe-policy-backup.v1",
+  "backupVersion": "stage9-safe-policy-v1",
+  "source": {
+    "commit": "f1dfff0d44c5c08e68fcf3e10b0075609f5e2269",
+    "files": {
+      "src/decider.mjs": "1c5bbb0bc24f5a5075174561b60a209f563fe0ea",
+      "aleph.config.json": "94bfb9a59b9df15e464208b226a10a37d4c1587c"
+    }
+  },
+  "policy": {
+    "ruleIds": [
+      "device_registered",
+      "step_up_required",
+      "resource_scope"
+    ],
+    "defaultDecision": "deny",
+    "requireDeviceRegistered": true,
+    "stepUp": {
+      "riskSignalWindowSeconds": 300,
+      "riskSignalMinimumCount": 10,
+      "fixtureRiskThreshold": 2,
+      "verifiedAuthMaximumAgeSeconds": 900
+    },
+    "resources": [
+      {
+        "classId": "class_fixture",
+        "projectId": "project_fixture",
+        "subjectId": "learner_fixture",
+        "ownerSubjectId": "learner_fixture",
+        "deviceId": "aaaaaaaaaaaaaaaa",
+        "service": "notes",
+        "path": "/notes/demo",
+        "resourceId": "notes:demo",
+        "permissions": [
+          "GET",
+          "PUT"
+        ]
+      }
+    ]
+  }
+}

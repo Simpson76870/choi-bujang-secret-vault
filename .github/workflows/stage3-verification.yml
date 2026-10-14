@@ -1,4 +1,4 @@
-name: Stage 9 verification
+name: Stage 10 verification
 
 on:
   push:
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-stage9:
+  verify-stage10:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Run unit and package tests
-        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:stage5 && npm run decider:test && npm run detect:test && npm run test:stage9 && npm run test:stage8 && npm run test:package
+        run: npm run test:r5 && npm run test:stage3 && npm run test:stage4 && npm run test:stage5 && npm run decider:test && npm run detect:test && npm run test:stage9 && npm run test:stage8 && npm run test:package && npm run test:stage10
 
       - name: Build deployment identity manifest
         env:
@@ -63,7 +63,7 @@ jobs:
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
-              && [ "$manifest_status" = "200" ] && grep -q '"step": 9' /tmp/aleph-response.json \
+              && [ "$manifest_status" = "200" ] && grep -q '"step": 10' /tmp/aleph-response.json \
               && grep -q "\"commit\": \"$expected_deployment_sha\"" /tmp/aleph-response.json; then
               echo "Unauthenticated API returned JSON 401; /aleph.json matches deployed commit $expected_deployment_sha."
               ready=1
@@ -79,12 +79,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate stage 9 submission JSON
+      - name: Generate stage 10 submission JSON
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          ALEPH_CHANGED_FILES_BASE: 33ac72830c9c312b9a4c4060f6a8a5be6d0c6098
+          ALEPH_CHANGED_FILES_BASE: d689e40a1763ab97e46b906e4612bd587f2072b4
         run: |
-          printf '%s\n' '{"explanation":"9단계: 가명 사용자·확인된 가상 기기·요청 메서드·판정·네트워크만 화이트리스트로 읽습니다. 동일 주체/기기의 10분 창 안 허용 GET 121건 이상과 비정상 네트워크가 함께 있을 때에만 burst_read 탐지 결과와 단일 기기 회수 제안을 냅니다. 기존 접속 판정 응답은 변경하지 않습니다.","blockedAt":"실제 운영 엔진의 기기/네트워크 사건 전달, 회수 집행 및 첫 의심 요청부터의 경과 시간 측정은 미실행입니다. detectDeviceEvents는 source=local_virtual_fixture인 가상 입력만 처리합니다."}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"10단계: 출처와 SHA-256을 확인한 9단계 안전 정책 사본, 별도 시험 정책 차이 미리보기, 확인값 기반 시험 정책 복구와 단일 가상 메모 복구 경로를 추가했습니다. 실제 메모 복구는 ID·소유자·내용 해시가 검증된 백업만 처리합니다.","blockedAt":"연결된 DB에 사전 검증된 B 메모 사본과 현재 시험 정책 상태가 없으므로 실제 복원 API는 안전하게 중단됩니다. 현재 데이터에서 사본을 생성하지 않았으며 로그인된 A/B 복구 시험은 미실행입니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
@@ -96,22 +96,24 @@ jobs:
           import { readFileSync } from 'node:fs';
           const bundle = JSON.parse(readFileSync('artifacts/submission.json', 'utf8'));
           assert.equal(bundle.schema, 'aleph.defense.submission.v2');
-          assert.equal(bundle.step, 9);
+          assert.equal(bundle.step, 10);
           const observed = new Map(bundle.attackAttempts.map(item => [item.attackId, item.observed]));
           assert.match(observed.get('homepage_security_header') ?? '', /보안 헤더/u);
           assert.match(observed.get('anonymous_notes_list') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('anonymous_note_item') ?? '', /JSON 오류로 거부함 \(HTTP 401\)/u);
           assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
-          assert.match(observed.get('deployment_manifest') ?? '', /단계 9/u);
+          assert.match(observed.get('deployment_manifest') ?? '', /단계 10/u);
           assert.match(observed.get('anonymous_direct_data_api') ?? '', /anon direct Data API는 권한 오류로 거부함/u);
-          console.log('9단계 제출 묶음의 공개 HTTP 점검 여섯 항목을 확인했습니다. 이는 실제 회수나 심판 통과의 증거가 아닙니다.');
+          assert.match(observed.get('restore_policy_unauthenticated') ?? '', /인증 없는 복구 요청을 JSON 오류로 거부함/u);
+          assert.match(observed.get('restore_note_unauthenticated') ?? '', /인증 없는 복구 요청을 JSON 오류로 거부함/u);
+          console.log('10단계 제출 묶음의 공개 HTTP 점검 여덟 항목을 확인했습니다. 이는 로그인한 실제 복구나 심판 통과의 증거가 아닙니다.');
           NODE
 
-      - name: Upload stage 9 submission JSON
+      - name: Upload stage 10 submission JSON
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: stage9-submission
+          name: stage10-submission
           path: artifacts/submission.json
           if-no-files-found: warn
           retention-days: 14
