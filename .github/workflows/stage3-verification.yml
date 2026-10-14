@@ -57,19 +57,22 @@ jobs:
           ready=0
           status="unknown"
           manifest_status="unknown"
+          home_status="unknown"
           expected_deployment_sha="$GITHUB_SHA"
           if ! [[ "$expected_deployment_sha" =~ ^[a-f0-9]{40}$ ]]; then echo "Could not resolve the workflow commit SHA."; exit 1; fi
           for attempt in $(seq 1 45); do
             status="$(curl -sS --max-time 5 -o /tmp/notes-response.json -w '%{http_code}' "$base/api/notes" || true)"
             manifest_status="$(curl -sS --max-time 5 -o /tmp/aleph-response.json -w '%{http_code}' "$base/aleph.json" || true)"
+            home_status="$(curl -sS --max-time 5 -o /tmp/home-response.html -w '%{http_code}' "$base/" || true)"
             if [ "$status" = "401" ] && grep -q '"AUTH_REQUIRED"' /tmp/notes-response.json \
               && [ "$manifest_status" = "200" ] && grep -q '"step": 10' /tmp/aleph-response.json \
-              && grep -q "\"commit\": \"$expected_deployment_sha\"" /tmp/aleph-response.json; then
-              echo "Unauthenticated API returned JSON 401; /aleph.json matches deployed commit $expected_deployment_sha."
+              && grep -q "\"commit\": \"$expected_deployment_sha\"" /tmp/aleph-response.json \
+              && [ "$home_status" = "200" ] && grep -q '로그인 자료실' /tmp/home-response.html; then
+              echo "Homepage returned HTML 200; unauthenticated API returned JSON 401; /aleph.json matches deployed commit $expected_deployment_sha."
               ready=1
               break
             fi
-            echo "Attempt $attempt: API HTTP $status; /aleph.json HTTP $manifest_status; waiting for deployed commit $expected_deployment_sha."
+            echo "Attempt $attempt: homepage HTTP $home_status; API HTTP $status; /aleph.json HTTP $manifest_status; waiting for deployed commit $expected_deployment_sha."
             sleep 10
           done
           if [ "$ready" != "1" ]; then
