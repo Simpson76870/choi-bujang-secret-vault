@@ -206,7 +206,7 @@ export async function runAttackChecks(config) {
   }
   if (config.step >= 10) {
     for (const [attackId, path] of [
-      ['restore_policy_unauthenticated', '/api/notes/audit'],
+      ['notes_audit_unauthenticated', '/api/notes/audit'],
       ['restore_note_unauthenticated', '/api/restore/notes/571efc48-7428-4740-b787-1ad8422acd37'],
     ]) {
       let status = 0;
@@ -224,8 +224,8 @@ export async function runAttackChecks(config) {
       const denied = [401, 403].includes(status) && isJson && hasError;
       checks.push({
         attackId,
-        expected: '복구 경로는 인증 없는 요청을 JSON 오류로 거부',
-        observed: denied ? '인증 없는 복구 요청을 JSON 오류로 거부함 (HTTP ' + status + ')'
+        expected: '복구와 감사 경로는 인증 없는 요청을 JSON 오류로 거부',
+        observed: denied ? (attackId === 'notes_audit_unauthenticated' ? '인증 없는 감사 요청을 JSON 오류로 거부함 (HTTP ' + status + ')' : '인증 없는 복구 요청을 JSON 오류로 거부함 (HTTP ' + status + ')')
           : '복구 경로의 인증 거부를 확인하지 못함 (HTTP ' + status + ')',
       });
     }
