@@ -64,6 +64,29 @@ revoke all privileges on table public.training_note_restore_audit from public, a
 grant select, insert on table public.training_note_restore_audit to service_role;
 revoke update, delete, truncate on table public.training_note_restore_audit from service_role;
 
+-- Post-restore HTTP checks are recorded separately from the restore audit row.
+create table if not exists public.training_note_restore_retest_audit (
+  id bigint generated always as identity primary key,
+  actor_id uuid not null,
+  note_id uuid not null,
+  backup_version text not null check (backup_version = 'stage4-b-preincident-v1'),
+  normal_attempted boolean not null,
+  normal_status integer check (normal_status between 100 and 599),
+  normal_passed boolean not null,
+  forbidden_attempted boolean not null,
+  forbidden_status integer check (forbidden_status between 100 and 599),
+  forbidden_passed boolean not null,
+  retest_passed boolean not null,
+  created_at timestamptz not null default now(),
+  check (not retest_passed or
+    (normal_attempted and normal_status = 200 and normal_passed
+     and forbidden_attempted and forbidden_status = 404 and forbidden_passed))
+);
+alter table public.training_note_restore_retest_audit enable row level security;
+revoke all privileges on table public.training_note_restore_retest_audit from public, anon, authenticated;
+grant select, insert on table public.training_note_restore_retest_audit to service_role;
+revoke update, delete, truncate on table public.training_note_restore_retest_audit from service_role;
+
 create or replace function public.restore_stage10_test_policy(
   p_expected_current_sha256 text,
   p_backup_version text,
@@ -205,5 +228,43 @@ end;
 $$;
 revoke all on function public.restore_stage10_training_note(uuid, uuid, uuid, text, text, text, text) from public, anon, authenticated;
 grant execute on function public.restore_stage10_training_note(uuid, uuid, uuid, text, text, text, text) to service_role;
+
+-- Seed only the fixed, source-controlled Stage 4 B fixture. Never copy the live row
+-- into this table: the constants below are the expected pre-incident baseline.
+insert into public.training_note_backups (
+  note_id, owner_id, fixture_key, backup_version, title, content,
+  content_sha256, manifest_sha256, source_commit, verified_at
+) values (
+  '571efc48-7428-4740-b787-1ad8422acd37',
+  '00000000-0000-4000-8000-000000000002',
+  'stage4_b_private_note',
+  'stage4-b-preincident-v1',
+  '공개 시험 메모',
+  '4단계 소유자 권한 검증에 사용하는 가상 메모입니다.',
+  '7ca435652f577612f8ef4c1f99a6cbebe1f8fb9806d4c0cfb03873c346033bfe',
+  '649a6ccaa2d953bb74885c9aac70a75a27406ac6776a575329d857ab3ea6997d',
+  'f1dfff0d44c5c08e68fcf3e10b0075609f5e2269',
+  now()
+) on conflict (note_id, owner_id, backup_version) do nothing;
+
+do $stage10_backup_check$
+begin
+  if not exists (
+    select 1 from public.training_note_backups
+     where note_id = '571efc48-7428-4740-b787-1ad8422acd37'::uuid
+       and owner_id = '00000000-0000-4000-8000-000000000002'::uuid
+       and fixture_key = 'stage4_b_private_note'
+       and backup_version = 'stage4-b-preincident-v1'
+       and title = '공개 시험 메모'
+       and content = '4단계 소유자 권한 검증에 사용하는 가상 메모입니다.'
+       and content_sha256 = '7ca435652f577612f8ef4c1f99a6cbebe1f8fb9806d4c0cfb03873c346033bfe'
+       and manifest_sha256 = '649a6ccaa2d953bb74885c9aac70a75a27406ac6776a575329d857ab3ea6997d'
+       and source_commit = 'f1dfff0d44c5c08e68fcf3e10b0075609f5e2269'
+       and verified_at is not null
+  ) then
+    raise exception 'STAGE10_VERIFIED_B_FIXTURE_BACKUP_INVALID';
+  end if;
+end;
+$stage10_backup_check$;
 
 commit;
