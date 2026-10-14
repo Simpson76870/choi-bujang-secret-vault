@@ -152,7 +152,7 @@ npm run build
 
 - `backups/policies/stage9-safe-policy.json`은 9단계 시작 직전 커밋 `f1dfff0d44c5c08e68fcf3e10b0075609f5e2269`의 판정기·설정 파일 blob 식별자를 근거로 삼는 기준본입니다. `src/restore-runtime.mjs`는 기준본의 원문 SHA-256과 출처를 확인합니다. 파일이 없거나 검증이 실패하면 복구를 중단합니다.
 - `GET /api/restore-policy`는 유효한 심판 발급자 토큰만 허용하고, 현재 별도 시험 정책과 기준본의 변경 경로·버전·범위만 반환합니다. 실제 정책 값과 메모 본문은 미리보기에 포함하지 않습니다.
-- `POST /api/restore-policy`는 미리보기에서 확인한 `backupVersion`, `confirm: true`, `expectedCurrentSha256`이 모두 정확히 일치할 때만 복구를 요청합니다. 현재 시험 정책이 중간에 바뀌면 거부합니다. 복구 범위는 `training_test_policy_state` 한 행뿐이며 운영 판정기, 다른 서비스 규칙 및 `aleph.config.json`의 운영 설정은 변경하지 않습니다. 성공한 복구는 별도 감사표에 추가 기록됩니다.
+- `POST /api/restore-policy`는 미리보기에서 확인한 `backupVersion`, `confirm: true`, `expectedCurrentSha256`이 모두 정확히 일치할 때만 복구를 요청합니다. 현재 시험 정책이 중간에 바뀌면 거부합니다. 복구 범위는 `training_test_policy_state` 한 행뿐이며 운영 판정기, 다른 서비스 규칙 및 `aleph.config.json`의 운영 설정은 변경하지 않습니다. 성공한 복구는 별도 감사표에 추가 기록됩니다. POST 처리에서도 변경 직전에 백업 파일을 다시 읽어 원문 SHA-256과 출처를 재검증하고, 처음 읽은 사본과 버전·출처·정책 해시가 다르면 DB 변경 함수를 호출하지 않고 중단합니다. 백업 누락·재검증 실패·사본 변경은 각각 오류로 기록되며 `restoreExecuted: false`를 반환합니다.
 
 ### 시험 계정 B의 메모 한 건 복구
 
