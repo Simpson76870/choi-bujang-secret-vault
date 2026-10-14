@@ -84,7 +84,7 @@ jobs:
         env:
           ALEPH_CHANGED_FILES_BASE: d689e40a1763ab97e46b906e4612bd587f2072b4
         run: |
-          printf '%s\n' '{"explanation":"10단계: 출처와 SHA-256을 확인한 9단계 안전 정책 사본, 별도 시험 정책 차이 미리보기, 확인값 기반 시험 정책 복구와 단일 가상 메모 복구 경로를 추가했습니다. 실제 메모 복구는 ID·소유자·내용 해시가 검증된 백업만 처리합니다.","blockedAt":"연결된 DB에 사전 검증된 B 메모 사본과 현재 시험 정책 상태가 없으므로 실제 복원 API는 안전하게 중단됩니다. 현재 데이터에서 사본을 생성하지 않았으며 로그인된 A/B 복구 시험은 미실행입니다."}' > bundle-notes.json
+          printf '%s\n' '{"explanation":"10단계: 고정된 Stage 4 B 메모 기준 사본의 ID·소유자·출처·내용 SHA-256·manifest SHA-256을 검증해 복구합니다. 복구가 성공하면 서버가 B의 요청 토큰으로 실제 배포 API를 다시 호출해 본인 메모 HTTP 200 및 다른 소유자 메모 HTTP 404를 확인하고 결과를 추가 전용 재시험 감사표에 기록합니다. 운영 정책은 건드리지 않습니다.","blockedAt":"현재 별도 시험 정책 상태 행이 없어 정책 복구만 TEST_POLICY_STATE_UNAVAILABLE로 중단됩니다. GitHub Actions의 비로그인 HTTP 점검은 인증된 메모 복구/재시험의 증거로 간주하지 않습니다. 재시험 통과 여부는 실제 POST 응답의 postRestoreRetest.passed와 감사 기록으로 확인합니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
