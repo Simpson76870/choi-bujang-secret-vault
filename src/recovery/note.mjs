@@ -1,5 +1,4 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { noteBackupManifestSha256, validateBNoteBackup } from '../restore-runtime.mjs';
 
 const HEX = /^[a-f0-9]{64}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -56,6 +55,7 @@ export function decodeSnapshotBase64(value) {
 }
 
 export function verifyNoteBackup({ raw, trustedSha256, incidentAt, pinnedBOwnerId }) {
+  // Verify the exact bytes supplied by the private environment variable first.
   if (typeof raw !== 'string' || raw.length > 8192
       || !constantTimeHexEqual(sha256(raw), trustedSha256)) {
     fail('UNVERIFIED_NOTE_BACKUP');
@@ -63,44 +63,38 @@ export function verifyNoteBackup({ raw, trustedSha256, incidentAt, pinnedBOwnerI
 
   let item;
   try { item = JSON.parse(raw); } catch { fail('INVALID_NOTE_BACKUP'); }
-  const expectedKeys = 'backup_version,content,content_sha256,fixture_key,manifest_sha256,note_id,owner_id,source_commit,title,verified_at';
+
+  // This is the Stage 10 environment-variable contract. Do not infer the
+  // snapshot from a database row or silently accept another backup schema.
   if (!item || typeof item !== 'object' || Array.isArray(item)
-      || Object.keys(item).sort().join(',') !== expectedKeys) {
+      || item.schema !== 'aleph.recovery.note-backup.v1'
+      || Object.keys(item).sort().join(',') !==
+        'body,capturedAt,contentSha256,id,ownerId,schema,title,verifiedAt,version'
+      || typeof item.version !== 'string'
+      || !/^[a-z][a-z0-9_-]{0,63}$/u.test(item.version)
+      || !UUID.test(item.id ?? '')
+      || !UUID.test(item.ownerId ?? '')
+      || !UUID.test(pinnedBOwnerId ?? '')
+      || item.ownerId !== pinnedBOwnerId
+      || !validText(item.title, 120)
+      || !validText(item.body, 2000)
+      || !HEX.test(item.contentSha256 ?? '')) {
     fail('INVALID_NOTE_BACKUP');
   }
 
-  if (!constantTimeHexEqual(sha256(item.content ?? ''), item.content_sha256)) {
-    fail('BACKUP_CONTENT_HASH_MISMATCH');
-  }
-  if (!constantTimeHexEqual(noteBackupManifestSha256(item), item.manifest_sha256)) {
-    fail('BACKUP_MANIFEST_HASH_MISMATCH');
-  }
-
-  let verified;
-  try {
-    verified = validateBNoteBackup(item, item.note_id, pinnedBOwnerId);
-  } catch {
-    fail('INVALID_NOTE_BACKUP');
-  }
-  if (timestamp(verified.verified_at) >= timestamp(incidentAt)) {
+  // The snapshot must have been captured and verified before the incident.
+  if (timestamp(item.capturedAt) > timestamp(item.verifiedAt)
+      || timestamp(item.verifiedAt) >= timestamp(incidentAt)) {
     fail('NOT_VERIFIED_BEFORE_INCIDENT');
   }
 
-  const row = {
-    id: verified.note_id,
-    owner_id: verified.owner_id,
-    title: verified.title,
-    body: verified.content,
-  };
-  return {
-    item: {
-      version: verified.backup_version,
-      contentSha256: contentSha256(row),
-      bodySha256: verified.content_sha256,
-    },
-    row,
-    trustedSha256,
-  };
+  const row = { id: item.id, owner_id: item.ownerId, title: item.title, body: item.body };
+  // Verify the complete note payload (ID + owner + title + body) with the
+  // backup's claimed digest, using a constant-time digest comparison.
+  if (!constantTimeHexEqual(contentSha256(row), item.contentSha256)) {
+    fail('BACKUP_CONTENT_HASH_MISMATCH');
+  }
+  return { item, row, trustedSha256 };
 }
 function presentRow(row) {
   return row == null ? null : {
@@ -144,7 +138,7 @@ export function previewNoteRestore({
     id,
     ownerId: pinnedBOwnerId,
     beforeSha256,
-    contentSha256: verified.item.bodySha256,
+    contentSha256: verified.item.contentSha256,
     backupSha256: trustedSha256,
     backupVersion: verified.item.version,
     changedFields,
