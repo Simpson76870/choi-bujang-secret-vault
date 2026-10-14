@@ -50,8 +50,13 @@ function noteRecordSha256(note) {
 }
 
 export function decodeSnapshotBase64(value) {
-  if (typeof value !== 'string' || value.length > 12000
-      || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value) || value.length % 4 !== 0) return null;
+  if (typeof value !== 'string' || value.length > 32768) return null;
+
+  // Some isolated runners provide the exact JSON string, while others provide
+  // its base64 encoding. Return raw JSON byte-for-byte so the outer SHA-256
+  // is always checked against the value the runner actually supplied.
+  if (value.trimStart().startsWith('{')) return value;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(value) || value.length % 4 !== 0) return null;
   try {
     const bytes = Buffer.from(value, 'base64');
     return bytes.toString('base64') === value ? bytes.toString('utf8') : null;
