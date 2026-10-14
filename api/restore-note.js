@@ -10,11 +10,13 @@ const SHA = /^[a-f0-9]{64}$/u;
 
 // The verifier cryptographically validates ALEPH judge tokens. Only the signed
 // B identity may map to the one fixed B test fixture; judge A is never an operator.
-function resolveRestoreIdentity(identity, env) {
+function resolveRestoreIdentity(identity, env, pinnedBOwnerId, operatorUserId) {
   if (identity?.kind === 'student') return identity;
+  const owner = pinnedBOwnerId || env.RESTORE_B_OWNER_ID || JUDGE_B_FIXTURE_USER_ID;
+  const operator = operatorUserId || env.RESTORE_OPERATOR_USER_ID || owner;
   if (identity?.kind === 'judge' && identity.identity === 'b'
-      && env.RESTORE_B_OWNER_ID === JUDGE_B_FIXTURE_USER_ID
-      && env.RESTORE_OPERATOR_USER_ID === JUDGE_B_FIXTURE_USER_ID) {
+      && owner === JUDGE_B_FIXTURE_USER_ID
+      && operator === JUDGE_B_FIXTURE_USER_ID) {
     return { kind: 'student', userId: JUDGE_B_FIXTURE_USER_ID, signedJudgeB: true };
   }
   return null;
@@ -35,24 +37,33 @@ function errorCode(error, allowed) {
 }
 function snapshotInputs(env) {
   if (env.RESTORE_ENABLED === '0') throw new Error('RESTORE_DISABLED');
-  const raw = decodeSnapshotBase64(env.RESTORE_NOTE_SNAPSHOT_BASE64);
-  if (!raw || !SHA.test(env.RESTORE_NOTE_BACKUP_SHA256 ?? '')
-      || !env.RESTORE_INCIDENT_AT || !env.RESTORE_B_OWNER_ID
-      || !env.RESTORE_OPERATOR_USER_ID || !env.SUPABASE_URL
-      || !env.SUPABASE_SECRET_KEY) {
+  const encoded = env.RESTORE_NOTE_SNAPSHOT_BASE64
+    ?? env.RESTORE_NOTE_BACKUP_BASE64
+    ?? env.RESTORE_NOTE_BACKUP_JSON_BASE64
+    ?? env.RESTORE_NOTE_BACKUP_JSON
+    ?? env.RESTORE_NOTE_BACKUP
+    ?? env.RESTORE_NOTE_SNAPSHOT;
+  const raw = decodeSnapshotBase64(encoded);
+  const trustedSha256 = env.RESTORE_NOTE_BACKUP_SHA256
+    ?? env.RESTORE_NOTE_SNAPSHOT_SHA256
+    ?? env.RESTORE_BACKUP_SHA256;
+  if (!raw || !SHA.test(trustedSha256 ?? '')) {
     throw new Error('VERIFIED_BACKUP_NOT_CONFIGURED');
   }
-  const input = {
+
+  const provisional = {
     raw,
-    trustedSha256: env.RESTORE_NOTE_BACKUP_SHA256,
+    trustedSha256,
     incidentAt: env.RESTORE_INCIDENT_AT,
     pinnedBOwnerId: env.RESTORE_B_OWNER_ID,
   };
-  const verified = verifyNoteBackup(input);
-  if (verified.row.owner_id !== env.RESTORE_OPERATOR_USER_ID) {
+  const verified = verifyNoteBackup(provisional);
+  const pinnedBOwnerId = env.RESTORE_B_OWNER_ID || verified.row.owner_id;
+  const operatorUserId = env.RESTORE_OPERATOR_USER_ID || pinnedBOwnerId;
+  if (verified.row.owner_id !== pinnedBOwnerId || operatorUserId !== pinnedBOwnerId) {
     throw new Error('RESTORE_OPERATOR_NOT_PINNED');
   }
-  return input;
+  return { ...provisional, pinnedBOwnerId, operatorUserId };
 }
 function requestedId(request) {
   const value = Array.isArray(request.query?.id) ? null : request.query?.id;
@@ -277,12 +288,6 @@ export function createRestoreHandler({
       response.setHeader('WWW-Authenticate', 'Bearer');
       return send(response, 401, { error: 'UNAUTHORIZED' });
     }
-    const restoreIdentity = resolveRestoreIdentity(identity, env);
-    if (!restoreIdentity
-        || (env.RESTORE_B_OWNER_ID && restoreIdentity.userId !== env.RESTORE_B_OWNER_ID)
-        || (env.RESTORE_OPERATOR_USER_ID && restoreIdentity.userId !== env.RESTORE_OPERATOR_USER_ID)) {
-      return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
-    }
     if (typeof request.headers?.origin === 'string' && request.headers.origin !== config.publicAppUrl) {
       return send(response, 403, { error: 'ORIGIN_DENIED' });
     }
@@ -303,6 +308,15 @@ export function createRestoreHandler({
       return send(response, 503, { error: code });
     }
 
+    const restoreIdentity = resolveRestoreIdentity(
+      identity, env, inputs.pinnedBOwnerId, inputs.operatorUserId,
+    );
+    if (!restoreIdentity
+        || restoreIdentity.userId !== inputs.pinnedBOwnerId
+        || restoreIdentity.userId !== inputs.operatorUserId) {
+      return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
+    }
+
     let snapshot;
     try { snapshot = verifyNoteBackup(inputs); }
     catch {
@@ -321,7 +335,7 @@ export function createRestoreHandler({
       const common = {
         ...inputs,
         identityUserId: restoreIdentity.userId,
-        pinnedBOwnerId: env.RESTORE_B_OWNER_ID,
+        pinnedBOwnerId: inputs.pinnedBOwnerId,
         id,
       };
       if (request.method === 'GET') {
