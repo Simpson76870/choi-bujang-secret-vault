@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { B_NOTE_BACKUP_VERSION, B_NOTE_FIXTURE_KEY, SAFE_POLICY_SOURCE_COMMIT, diffPolicy, loadVerifiedPolicyBackup, noteBackupManifestSha256, noteContentSha256, policyDigest, validateBNoteBackup, validatePolicySnapshot, validatePolicyState } from '../src/restore-runtime.mjs';
-import { createNoteRestoreHandler } from '../api/restore-note.js';
+import { createNoteRestoreHandler, createRestoreAuthenticator } from '../api/restore-note.js';
 import { createPolicyRestoreHandler } from '../api/restore-policy.js';
 
 const OWNER_A = '00000000-0000-4000-8000-000000000001';
@@ -99,6 +99,30 @@ test('B note restore stops without verified pre-incident row and never calls mut
   assert.equal(response.payload.error, 'VERIFIED_BACKUP_UNAVAILABLE');
   assert.equal(response.payload.restoreExecuted, false);
   assert.equal(rpcCalled, false);
+});
+
+test('signed judge B identity is mapped only to the B fixture restore scope', async () => {
+  const auth = await createRestoreAuthenticator(async () => ({
+    config: { publicAppUrl: 'https://example.test' },
+    verifyLoginAuthorization: async token => token === 'Bearer judge-b'
+      ? { kind: 'judge', userId: '00000000-0000-4000-8000-000000000088',
+          identity: 'b', runId: '10000000-0000-4000-8000-000000000001' }
+      : token === 'Bearer judge-a'
+        ? { kind: 'judge', userId: '00000000-0000-4000-8000-000000000077',
+            identity: 'a', runId: '10000000-0000-4000-8000-000000000001' }
+        : null,
+  }));
+  const bResponse = responseRecorder();
+  const b = await auth({ headers: { authorization: 'Bearer judge-b' } }, bResponse);
+  assert.equal(b.restoreOwnerId, OWNER_B);
+  assert.equal(b.actorId, '00000000-0000-4000-8000-000000000088');
+  assert.equal(b.identity.identity, 'b');
+
+  const aResponse = responseRecorder();
+  const a = await auth({ headers: { authorization: 'Bearer judge-a' } }, aResponse);
+  assert.equal(a, null);
+  assert.equal(aResponse.statusCode, 403);
+  assert.deepEqual(aResponse.payload, { error: 'RESTORE_IDENTITY_NOT_ALLOWED' });
 });
 
 test('successful B-note restore performs real HTTP owner and forbidden-request retests and audits them', async () => {
