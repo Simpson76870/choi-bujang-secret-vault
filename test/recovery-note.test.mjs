@@ -236,9 +236,7 @@ test('signed ALEPH judge identity B may restore only the pinned B fixture and ru
   assert.equal(plan.payload.ownerId, JUDGE_B_FIXTURE_USER_ID);
   assert.equal(plan.payload.backupVersion, 'stage10-safe-v1');
 
-  const applied = await invoke(instance.handler, {
-    method: 'POST', body: { planSha256: plan.payload.planSha256 },
-  });
+  const applied = await invoke(instance.handler, { method: 'POST' });
   assert.equal(applied.statusCode, 200);
   assert.equal(applied.payload.restored, true);
   assert.equal(applied.payload.restore.retests.normal.attempted, true);
