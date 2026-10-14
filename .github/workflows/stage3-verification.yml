@@ -84,7 +84,7 @@ jobs:
         env:
           ALEPH_CHANGED_FILES_BASE: d689e40a1763ab97e46b906e4612bd587f2072b4
         run: |
-          printf '%s\n' '{"explanation":"10단계: 고정된 Stage 4 B 메모 기준 사본의 ID·소유자·출처·내용 SHA-256·manifest SHA-256을 검증해 복구합니다. 복구가 성공하면 서버가 B의 요청 토큰으로 실제 배포 API를 다시 호출해 본인 메모 HTTP 200 및 다른 소유자 메모 HTTP 404를 확인하고 결과를 추가 전용 재시험 감사표에 기록합니다. 운영 정책은 건드리지 않습니다.","blockedAt":"현재 별도 시험 정책 상태 행이 없어 정책 복구만 TEST_POLICY_STATE_UNAVAILABLE로 중단됩니다. GitHub Actions의 비로그인 HTTP 점검은 인증된 메모 복구/재시험의 증거로 간주하지 않습니다. 재시험 통과 여부는 실제 POST 응답의 postRestoreRetest.passed와 감사 기록으로 확인합니다."}' > bundle-notes.json
+          printf '%s\\n' '{"explanation":"10단계는 환경 변수로 주입된 B 메모 사본의 원문 SHA-256과 내용 SHA-256을 각각 timingSafeEqual로 검증하고, 복구 직전 사본을 다시 읽어 동일성을 확인합니다. 복구 성공 후에는 같은 인증 토큰으로 본인 메모 GET과 타인 메모 GET을 실행하고 응답 상태·메타데이터만 restore.retests에 담으며, 감사 기록은 서버 프로세스 내부 append-only 메모리에 기록합니다. 정책 사본은 backups/step10의 JSON과 SHA-256으로 검증하며 restore:plan과 확인 버전 지정 restore:apply는 artifacts/만 씁니다.","blockedAt":"GitHub CI에서는 비로그인 GET 요청과 회귀 테스트만 실행했습니다. 인증된 실제 B 메모 복원과 그 뒤 HTTP 재시험은 실행하지 않았으므로 CI 제출 기록에서 성공으로 주장하지 않습니다. 공식 심판 환경이 제공하는 비공개 환경 변수와 B 신원으로 실행된 restore.retests 결과만 실제 복원 증거입니다."}' > bundle-notes.json
           npm run bundle
           cat artifacts/submission.json
 
@@ -104,7 +104,7 @@ jobs:
           assert.match(observed.get('static_data_removed') ?? '', /HTTP 404/u);
           assert.match(observed.get('deployment_manifest') ?? '', /단계 10/u);
           assert.match(observed.get('anonymous_direct_data_api') ?? '', /anon direct Data API는 권한 오류로 거부함/u);
-          assert.match(observed.get('restore_policy_unauthenticated') ?? '', /인증 없는 복구 요청을 JSON 오류로 거부함/u);
+          assert.match(observed.get('notes_audit_unauthenticated') ?? '', /인증 없는 감사 요청을 JSON 오류로 거부함/u);
           assert.match(observed.get('restore_note_unauthenticated') ?? '', /인증 없는 복구 요청을 JSON 오류로 거부함/u);
           console.log('10단계 제출 묶음의 공개 HTTP 점검 여덟 항목을 확인했습니다. 이는 로그인한 실제 복구나 심판 통과의 증거가 아닙니다.');
           NODE
