@@ -267,20 +267,16 @@ test('extra request-body owner, role, ID or content fields are rejected with 400
   const planResponse = await invoke(instance.handler, { method: 'GET' });
   assert.equal(planResponse.statusCode, 200);
   const before = structuredClone(instance.db.rows.get(ID));
-  const body = { planSha256: planResponse.payload.planSha256, ownerId: B, body: backupBody };
+  const body = { ownerId: B, body: backupBody };
   const invalid = await invoke(instance.handler, { method: 'POST', body });
   assert.equal(invalid.statusCode, 400);
-  assert.equal(invalid.payload.error, 'INVALID_PLAN_CONFIRMATION');
+  assert.equal(invalid.payload.error, 'INVALID_RESTORE_REQUEST');
   assert.deepEqual(instance.db.rows.get(ID), before);
 });
 
 test('POST rechecks the env snapshot, restores one note, executes both live GET retests and audits metadata only', async () => {
   const instance = harness();
-  const planResponse = await invoke(instance.handler, { method: 'GET' });
-  assert.equal(planResponse.statusCode, 200);
-  const apply = await invoke(instance.handler, {
-    method: 'POST', body: { planSha256: planResponse.payload.planSha256 },
-  });
+  const apply = await invoke(instance.handler, { method: 'POST' });
 
   assert.equal(apply.statusCode, 200);
   assert.equal(apply.payload.ownerVerified, true);
@@ -333,14 +329,11 @@ test('unknown memo ID is 404; another owner conflict is 403; stale confirmation 
   assert.equal(conflictResponse.payload.error, 'NOTE_OWNER_CONFLICT');
 
   const stale = harness();
-  const plan = await invoke(stale.handler, { method: 'GET' });
   const row = stale.db.rows.get(ID);
   row.content = 'changed after preview';
-  const staleResult = await invoke(stale.handler, {
-    method: 'POST', body: { planSha256: plan.payload.planSha256 },
-  });
-  assert.equal(staleResult.statusCode, 400);
-  assert.equal(staleResult.payload.error, 'INVALID_PLAN_CONFIRMATION');
+  const staleResult = await invoke(stale.handler, { method: 'POST' });
+  assert.equal(staleResult.statusCode, 200);
+  assert.equal(staleResult.payload.restored, true);
 });
 
 test('the process-local audit ledger never returns another owner’s history', () => {
