@@ -146,6 +146,27 @@ test('environment backup uses a constant-time whole-snapshot hash and a second c
   }), /BACKUP_CONTENT_HASH_MISMATCH/u);
 });
 
+test('private backup contract accepts verified snapshot aliases without invented schema or timestamps', () => {
+  const body = 'body from the private snapshot contract';
+  const raw = JSON.stringify({
+    note_id: ID,
+    owner_id: B,
+    title: 'Private snapshot note',
+    content: body,
+    content_sha256: sha256(body),
+    backup_version: 'private-bak-v2',
+  });
+  const verified = verifyNoteBackup({
+    raw,
+    trustedSha256: sha256(raw),
+    pinnedBOwnerId: B,
+  });
+  assert.equal(verified.row.id, ID);
+  assert.equal(verified.row.owner_id, B);
+  assert.equal(verified.row.body, body);
+  assert.equal(verified.item.version, 'private-bak-v2');
+});
+
 test('backup verification requires pre-incident verification timestamp and pinned owner', () => {
   const raw = backupRaw();
   const inputs = { raw, trustedSha256: sha256(raw), incidentAt, pinnedBOwnerId: B };
