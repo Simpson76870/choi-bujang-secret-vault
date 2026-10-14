@@ -123,7 +123,7 @@ export async function makeStep10RestorePlan({ env = process.env } = {}) {
     auditHistoryTouched: false,
   };
   await mkdir(ARTIFACT_DIR, { recursive: true });
-  await writeFile(PLAN_PATH, JSON.stringify(plan, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(PLAN_PATH, JSON.stringify(plan, null, 2) + '\n', { mode: 0o600 });
   return plan;
 }
 
@@ -167,7 +167,7 @@ export async function applyStep10Restore({ confirmVersion, env = process.env } =
     auditHistoryPreserved: true,
     auditHistoryTouched: false,
   };
-  await writeFile(OUTPUT_POLICY_PATH, JSON.stringify(backup.snapshot.policy, null, 2) + '\\n', { mode: 0o600 });
-  await writeFile(APPLY_PATH, JSON.stringify(artifact, null, 2) + '\\n', { mode: 0o600 });
+  await writeFile(OUTPUT_POLICY_PATH, JSON.stringify(backup.snapshot.policy, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(APPLY_PATH, JSON.stringify(artifact, null, 2) + '\n', { mode: 0o600 });
   return artifact;
 }
