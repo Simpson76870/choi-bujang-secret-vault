@@ -168,7 +168,7 @@ declare
   current_owner uuid;
   action_name text;
 begin
-  if p_note_id is null or p_owner_id is null or p_actor_id is distinct from p_owner_id
+  if p_note_id is null or p_owner_id is null or p_actor_id is null
     or p_backup_version <> 'stage4-b-preincident-v1'
     or p_content_sha256 !~ '^[a-f0-9]{64}$' then
     raise exception using errcode = '42501', message = 'RESTORE_OWNER_OR_ARGUMENT_INVALID';
