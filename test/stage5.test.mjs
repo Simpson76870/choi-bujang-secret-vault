@@ -50,11 +50,14 @@ test('stage 5 source URL is query-free HTTPS and route allowlist is present', as
     'PUT /api/announcements/:id',
     'GET /api/notices/:id',
     'PUT /api/notices/:id',
-    'GET /api/restore-policy',
-    'POST /api/restore-policy',
-    'POST /api/restore-note',
+    'GET /api/restore/notes/:id',
+    'POST /api/restore/notes/:id',
+    'GET /api/notes/restore/:id',
+    'POST /api/notes/restore/:id',
+    'GET /api/notes/audit',
+    'GET /api/operations',
   ]);
-  assert.equal(config.restoreRoute, 'POST /api/restore-note');
+  assert.equal(config.restoreRoute, '/api/restore/notes/:id');
 });
 
 test('permission SQL revokes direct privileges only from the training_notes table', async () => {
