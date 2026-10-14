@@ -240,25 +240,25 @@ test('policy restore stops when the backup changes between request reads', async
 test('Stage 10 note recovery reads only environment backup and keeps audit writes out of the database', async () => {
   const api = await read('../api/restore-note.js');
   const ledger = await read('../src/recovery/ledger.mjs');
-  assert.match(api, /RESTORE_NOTE_SNAPSHOT_BASE64/u);
-  assert.match(api, /RESTORE_NOTE_BACKUP_SHA256/u);
-  assert.match(api, /RESTORE_INCIDENT_AT/u);
-  assert.match(api, /RESTORE_B_OWNER_ID/u);
-  assert.match(api, /RESTORE_OPERATOR_USER_ID/u);
-  assert.doesNotMatch(api, /from\\(['"]training_note_backups['"]\\)/u);
-  assert.doesNotMatch(api, /training_note_restore_audit/u);
-  assert.doesNotMatch(api, /training_note_restore_retest_audit/u);
-  assert.match(ledger, /appendRecoveryAudit/u);
-  assert.match(ledger, /process_local_only/u);
+  assert.ok(api.includes('RESTORE_NOTE_SNAPSHOT_BASE64'));
+  assert.ok(api.includes('RESTORE_NOTE_BACKUP_SHA256'));
+  assert.ok(api.includes('RESTORE_INCIDENT_AT'));
+  assert.ok(api.includes('RESTORE_B_OWNER_ID'));
+  assert.ok(api.includes('RESTORE_OPERATOR_USER_ID'));
+  assert.ok(!api.includes('training_note_backups'));
+  assert.ok(!api.includes('training_note_restore_audit'));
+  assert.ok(!api.includes('training_note_restore_retest_audit'));
+  assert.ok(ledger.includes('appendRecoveryAudit'));
+  assert.ok(ledger.includes('process_local_only'));
 });
 
-test('README documents environment backup, canonical recovery route and truthful operations status', async () => {
+test('README documents environment backup, recovery route, audit and truthful operations status', async () => {
   const readme = await read('../README.md');
-  assert.match(readme, /RESTORE_NOTE_SNAPSHOT_BASE64/u);
-  assert.match(readme, /RESTORE_NOTE_BACKUP_SHA256/u);
-  assert.match(readme, /POST `\\/api\\/restore\\/notes\\/:id`/u);
-  assert.match(readme, /GET `\\/api\\/notes\\/audit`/u);
-  assert.match(readme, /GET `\\/api\\/operations`/u);
-  assert.match(readme, /not_run/u);
-  assert.match(readme, /npm run restore:plan/u);
+  assert.ok(readme.includes('RESTORE_NOTE_SNAPSHOT_BASE64'));
+  assert.ok(readme.includes('RESTORE_NOTE_BACKUP_SHA256'));
+  assert.ok(readme.includes('POST `/api/restore/notes/:id`'));
+  assert.ok(readme.includes('GET `/api/notes/audit`'));
+  assert.ok(readme.includes('GET `/api/operations`'));
+  assert.ok(readme.includes('not_run'));
+  assert.ok(readme.includes('npm run restore:plan'));
 });
