@@ -1,6 +1,6 @@
 import { getNotesRuntime } from '../src/notes-runtime.mjs';
 import {
-  diffPolicy, loadVerifiedPolicyBackup, policyDigest, validatePolicyState,
+  canonicalJson, diffPolicy, loadVerifiedPolicyBackup, policyDigest, sha256, validatePolicyState,
 } from '../src/restore-runtime.mjs';
 
 function send(response, status, payload) {
@@ -113,14 +113,43 @@ export function createPolicyRestoreHandler({
         backupVersion: backup.backupVersion, restoreExecuted: false });
     }
 
+    // A preview is not authority to restore from a previously read object. Re-read
+    // and re-verify the backup immediately before mutation, and fail closed if it
+    // disappeared, became invalid, or differs from the snapshot shown to the judge.
+    let verifiedBackup;
+    try {
+      verifiedBackup = await backupLoader();
+    } catch (error) {
+      const missing = error?.message === 'POLICY_BACKUP_MISSING';
+      return send(response, missing ? 503 : 409, {
+        error: missing ? 'POLICY_BACKUP_MISSING' : 'POLICY_BACKUP_INVALID',
+        backupVersion: backup.backupVersion,
+        changedItems: changes,
+        restoreExecuted: false,
+      });
+    }
+    const initialFingerprint = sha256(canonicalJson(backup));
+    const verifiedFingerprint = sha256(canonicalJson(verifiedBackup));
+    if (verifiedFingerprint !== initialFingerprint
+        || verifiedBackup.backupVersion !== backup.backupVersion
+        || verifiedBackup.source?.commit !== backup.source?.commit
+        || policyDigest(verifiedBackup.policy) !== policyDigest(backup.policy)) {
+      return send(response, 409, {
+        error: 'POLICY_BACKUP_CHANGED',
+        backupVersion: backup.backupVersion,
+        changedItems: changes,
+        restoreExecuted: false,
+      });
+    }
+
     let result;
     try {
       const { data, error } = await context.supabase.rpc('restore_stage10_test_policy', {
         p_expected_current_sha256: currentHash,
-        p_backup_version: backup.backupVersion,
-        p_backup_policy: backup.policy,
-        p_backup_policy_sha256: policyDigest(backup.policy),
-        p_source_commit: backup.source.commit,
+        p_backup_version: verifiedBackup.backupVersion,
+        p_backup_policy: verifiedBackup.policy,
+        p_backup_policy_sha256: policyDigest(verifiedBackup.policy),
+        p_source_commit: verifiedBackup.source.commit,
         p_actor_id: context.identity.userId,
         p_changed_items: changes.map(item => item.path),
       });
@@ -132,8 +161,8 @@ export function createPolicyRestoreHandler({
     return send(response, 200, {
       action: 'restore_test_policy',
       restored: true,
-      backupVersion: backup.backupVersion,
-      restoredSha256: policyDigest(backup.policy),
+      backupVersion: verifiedBackup.backupVersion,
+      restoredSha256: policyDigest(verifiedBackup.policy),
       changedItems: changes,
       auditRecorded: true,
       operationalPolicyTouched: false,
