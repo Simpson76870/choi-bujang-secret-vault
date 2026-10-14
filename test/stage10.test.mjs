@@ -237,29 +237,28 @@ test('policy restore stops when the backup changes between request reads', async
   assert.equal(response.payload.restoreExecuted, false);
 });
 
-test('Stage 10 database migration isolates test policy, backup and append-only audit tables', async () => {
-  const sql = await read('../supabase/stage10-backup-restore.sql');
-  assert.match(sql, /create table if not exists public\.training_test_policy_state/u);
-  assert.match(sql, /create table if not exists public\.training_note_backups/u);
-  assert.match(sql, /create table if not exists public\.training_test_policy_audit/u);
-  assert.match(sql, /create table if not exists public\.training_note_restore_audit/u);
-  assert.match(sql, /create table if not exists public\.training_note_restore_retest_audit/u);
-  assert.match(sql, /revoke update, delete, truncate on table public\.training_note_restore_audit from service_role/u);
-  assert.match(sql, /revoke update, delete, truncate on table public\.training_note_restore_retest_audit from service_role/u);
-  assert.match(sql, /stage4-b-preincident-v1/u);
-  assert.match(sql, /STAGE10_VERIFIED_B_FIXTURE_BACKUP_INVALID/u);
-  assert.match(sql, /revoke update, delete, truncate on table public\.training_test_policy_audit from service_role/u);
-  assert.doesNotMatch(sql, /delete\s+from\s+public\.training_notes/iu);
-  assert.match(sql, /restore_stage10_training_note/u);
-  assert.match(sql, /restore_stage10_test_policy/u);
+test('Stage 10 note recovery reads only environment backup and keeps audit writes out of the database', async () => {
+  const api = await read('../api/restore-note.js');
+  const ledger = await read('../src/recovery/ledger.mjs');
+  assert.match(api, /RESTORE_NOTE_SNAPSHOT_BASE64/u);
+  assert.match(api, /RESTORE_NOTE_BACKUP_SHA256/u);
+  assert.match(api, /RESTORE_INCIDENT_AT/u);
+  assert.match(api, /RESTORE_B_OWNER_ID/u);
+  assert.match(api, /RESTORE_OPERATOR_USER_ID/u);
+  assert.doesNotMatch(api, /from\\(['"]training_note_backups['"]\\)/u);
+  assert.doesNotMatch(api, /training_note_restore_audit/u);
+  assert.doesNotMatch(api, /training_note_restore_retest_audit/u);
+  assert.match(ledger, /appendRecoveryAudit/u);
+  assert.match(ledger, /process_local_only/u);
 });
 
-test('README states restore routes and unavailable-backup fail-closed behavior', async () => {
+test('README documents environment backup, canonical recovery route and truthful operations status', async () => {
   const readme = await read('../README.md');
-  assert.match(readme, /GET \| `\/api\/restore-policy`/u);
-  assert.match(readme, /POST `\/api\/restore\/notes\/:id`/u);
-  assert.match(readme, /GET `\/api\/notes\/audit`/u);
-  assert.match(readme, /GET `\/api\/operations`/u);
-  assert.match(readme, /VERIFIED_BACKUP_UNAVAILABLE/u);
-  assert.match(readme, /TEST_POLICY_STATE_UNAVAILABLE/u);
+  assert.match(readme, /RESTORE_NOTE_SNAPSHOT_BASE64/u);
+  assert.match(readme, /RESTORE_NOTE_BACKUP_SHA256/u);
+  assert.match(readme, /POST `\\/api\\/restore\\/notes\\/:id`/u);
+  assert.match(readme, /GET `\\/api\\/notes\\/audit`/u);
+  assert.match(readme, /GET `\\/api\\/operations`/u);
+  assert.match(readme, /not_run/u);
+  assert.match(readme, /npm run restore:plan/u);
 });
