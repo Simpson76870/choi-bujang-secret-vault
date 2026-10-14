@@ -8,40 +8,33 @@ import {
 } from '../src/recovery/ledger.mjs';
 import { createRestoreHandler } from '../api/restore-note.js';
 import { JUDGE_B_FIXTURE_USER_ID } from '../src/notes-runtime.mjs';
-import {
-  B_NOTE_BACKUP_VERSION, B_NOTE_FIXTURE_KEY, B_NOTE_SOURCE_COMMIT,
-  noteBackupManifestSha256, noteContentSha256 as fixtureContentSha256,
-} from '../src/restore-runtime.mjs';
 
 const A = '00000000-0000-4000-8000-000000000001';
 const B = JUDGE_B_FIXTURE_USER_ID;
-const ID = '00000000-0000-4000-8000-000000000099';
+const ID = '571efc48-7428-4740-b787-1ad8422acd37';
 const OTHER = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const title = '공개 시험 메모';
 const backupBody = '4단계 소유자 권한 검증에 사용하는 가상 메모입니다.';
+const capturedAt = '2026-10-12T11:59:00.000Z';
 const verifiedAt = '2026-10-12T12:00:00.000Z';
 const incidentAt = '2026-10-14T00:00:00.000Z';
 
 function backupRaw(overrides = {}) {
+  const ownerId = overrides.ownerId ?? B;
   const row = {
-    note_id: ID,
-    owner_id: B,
-    fixture_key: B_NOTE_FIXTURE_KEY,
-    backup_version: B_NOTE_BACKUP_VERSION,
+    schema: 'aleph.recovery.note-backup.v1',
+    version: 'stage10-safe-v1',
+    id: ID,
+    ownerId,
     title,
-    content: backupBody,
-    content_sha256: fixtureContentSha256(backupBody),
-    source_commit: B_NOTE_SOURCE_COMMIT,
-    verified_at: verifiedAt,
-    manifest_sha256: '',
+    body: backupBody,
+    capturedAt,
+    verifiedAt,
+    contentSha256: contentSha256({
+      id: ID, owner_id: ownerId, title, body: backupBody,
+    }),
     ...overrides,
   };
-  if (!Object.hasOwn(overrides, 'content_sha256')) {
-    row.content_sha256 = fixtureContentSha256(row.content);
-  }
-  if (!Object.hasOwn(overrides, 'manifest_sha256')) {
-    row.manifest_sha256 = noteBackupManifestSha256(row);
-  }
   return JSON.stringify(row);
 }
 function makeEnv(raw = backupRaw(), ownerId = B) {
@@ -147,7 +140,7 @@ test('environment backup uses a constant-time whole-snapshot hash and a second c
   const inputs = { raw, trustedSha256: sha256(raw), incidentAt, pinnedBOwnerId: B };
   assert.equal(verifyNoteBackup(inputs).row.id, ID);
   assert.throws(() => verifyNoteBackup({ ...inputs, trustedSha256: '0'.repeat(64) }), /UNVERIFIED_NOTE_BACKUP/u);
-  const changed = backupRaw({ content: 'tampered body', content_sha256: fixtureContentSha256(backupBody) });
+  const changed = backupRaw({ body: 'tampered body' });
   assert.throws(() => verifyNoteBackup({
     raw: changed, trustedSha256: sha256(changed), incidentAt, pinnedBOwnerId: B,
   }), /BACKUP_CONTENT_HASH_MISMATCH/u);
@@ -167,7 +160,7 @@ test('restore preview exposes hashes, changed fields and a versioned plan but ne
     raw, trustedSha256: sha256(raw), incidentAt, pinnedBOwnerId: B,
     identityUserId: B, id: ID, current,
   });
-  assert.equal(plan.backupVersion, B_NOTE_BACKUP_VERSION);
+  assert.equal(plan.backupVersion, 'stage10-safe-v1');
   assert.deepEqual(plan.changedFields, ['title', 'body']);
   assert.equal(JSON.stringify(plan).includes(backupBody), false);
   assert.equal(JSON.stringify(plan).includes('tampered text'), false);
@@ -205,7 +198,7 @@ test('a changed snapshot reread is rejected before the store can write', async (
     identityUserId: B, id: ID, current,
   });
   let writes = 0;
-  const changedRaw = backupRaw({ content: 'changed after preview' });
+  const changedRaw = backupRaw({ body: 'changed after preview' });
   await assert.rejects(restoreNoteOnce({
     store: {
       find: async () => ({ ...current }),
@@ -233,7 +226,7 @@ test('only B with a verified bearer token may restore the pinned backup row', as
 });
 
 test('signed ALEPH judge identity B may restore only the pinned B fixture and run both live GET retests', async () => {
-  const raw = backupRaw({ owner_id: JUDGE_B_FIXTURE_USER_ID });
+  const raw = backupRaw({ ownerId: JUDGE_B_FIXTURE_USER_ID });
   const env = makeEnv(raw, JUDGE_B_FIXTURE_USER_ID);
   const judgeB = { kind: 'judge', userId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', identity: 'b' };
   const instance = harness({ env, identity: judgeB });
@@ -241,7 +234,7 @@ test('signed ALEPH judge identity B may restore only the pinned B fixture and ru
   const plan = await invoke(instance.handler, { method: 'GET' });
   assert.equal(plan.statusCode, 200);
   assert.equal(plan.payload.ownerId, JUDGE_B_FIXTURE_USER_ID);
-  assert.equal(plan.payload.backupVersion, B_NOTE_BACKUP_VERSION);
+  assert.equal(plan.payload.backupVersion, 'stage10-safe-v1');
 
   const applied = await invoke(instance.handler, {
     method: 'POST', body: { planSha256: plan.payload.planSha256 },
@@ -292,7 +285,7 @@ test('POST rechecks the env snapshot, restores one note, executes both live GET 
   assert.equal(apply.statusCode, 200);
   assert.equal(apply.payload.ownerVerified, true);
   assert.equal(apply.payload.restored, true);
-  assert.equal(apply.payload.contentSha256, fixtureContentSha256(backupBody));
+  assert.equal(apply.payload.contentSha256, contentSha256({ id: ID, owner_id: B, title, body: backupBody }));
   assert.equal(apply.payload.restore.retests.normal.attempted, true);
   assert.equal(apply.payload.restore.retests.normal.status, 200);
   assert.equal(apply.payload.restore.retests.normal.passed, true);
