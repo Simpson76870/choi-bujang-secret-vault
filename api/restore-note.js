@@ -295,7 +295,8 @@ export function createRestoreHandler({
       return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
     }
 
-    const store = noteStore(runtime.supabase);
+    try {
+      const store = noteStore(runtime.supabase);
       const common = {
         ...inputs,
         identityUserId: identity.userId,
