@@ -295,7 +295,7 @@ export function createRestoreHandler({
       const code = errorCode(error, [
         'RESTORE_DISABLED', 'VERIFIED_BACKUP_NOT_CONFIGURED', 'UNVERIFIED_NOTE_BACKUP',
         'INVALID_NOTE_BACKUP', 'INVALID_BACKUP_TIME', 'NOT_VERIFIED_BEFORE_INCIDENT',
-        'BACKUP_CONTENT_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
+        'BACKUP_CONTENT_HASH_MISMATCH', 'BACKUP_MANIFEST_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
       ]);
       recordOperation('backup_outer_sha256', { passed: false, code: code.toLowerCase() });
       recordOperation('backup_content_sha256', { passed: false, code: code.toLowerCase() });
@@ -351,7 +351,7 @@ export function createRestoreHandler({
           return send(response, 403, { error: error.message });
         }
         if (error?.message === 'NOTE_NOT_IN_BACKUP') return send(response, 404, { error: error.message });
-        if (['UNVERIFIED_NOTE_BACKUP', 'BACKUP_CONTENT_HASH_MISMATCH',
+        if (['UNVERIFIED_NOTE_BACKUP', 'BACKUP_CONTENT_HASH_MISMATCH', 'BACKUP_MANIFEST_HASH_MISMATCH',
           'NOT_VERIFIED_BEFORE_INCIDENT', 'INVALID_NOTE_BACKUP'].includes(error?.message)) {
           recordOperation('backup_outer_sha256', { passed: false, code: 'recheck_failed' });
           return send(response, 503, { error: 'UNVERIFIED_NOTE_BACKUP' });
