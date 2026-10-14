@@ -205,17 +205,16 @@ export async function runAttackChecks(config) {
     });
   }
   if (config.step >= 10) {
-    for (const [attackId, path, method, body] of [
-      ['restore_policy_unauthenticated', '/api/restore-policy', 'GET', undefined],
-      ['restore_note_unauthenticated', '/api/restore-note', 'POST', '{}'],
+    for (const [attackId, path] of [
+      ['restore_policy_unauthenticated', '/api/notes/audit'],
+      ['restore_note_unauthenticated', '/api/restore/notes/571efc48-7428-4740-b787-1ad8422acd37'],
     ]) {
       let status = 0;
       let isJson = false;
       let hasError = false;
       try {
         const response = await fetch(new URL(path, app), {
-          method, headers: body ? { 'Content-Type': 'application/json' } : undefined,
-          body, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
+          method: 'GET', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
         });
         status = response.status;
         isJson = (response.headers.get('content-type') || '').toLowerCase().includes('application/json');
