@@ -1,5 +1,5 @@
 import config from '../aleph.config.json' with { type: 'json' };
-import { getNotesRuntime } from '../src/notes-runtime.mjs';
+import { getNotesRuntime, JUDGE_B_FIXTURE_USER_ID } from '../src/notes-runtime.mjs';
 import {
   decodeSnapshotBase64, previewNoteRestore, restoreNoteOnce, verifyNoteBackup,
 } from '../src/recovery/note.mjs';
@@ -7,6 +7,18 @@ import { appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner, rec
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA = /^[a-f0-9]{64}$/u;
+
+// The verifier cryptographically validates ALEPH judge tokens. Only the signed
+// B identity may map to the one fixed B test fixture; judge A is never an operator.
+function resolveRestoreIdentity(identity, env) {
+  if (identity?.kind === 'student') return identity;
+  if (identity?.kind === 'judge' && identity.identity === 'b'
+      && env.RESTORE_B_OWNER_ID === JUDGE_B_FIXTURE_USER_ID
+      && env.RESTORE_OPERATOR_USER_ID === JUDGE_B_FIXTURE_USER_ID) {
+    return { kind: 'student', userId: JUDGE_B_FIXTURE_USER_ID, signedJudgeB: true };
+  }
+  return null;
+}
 
 function send(response, status, payload) {
   return response.status(status).json(payload);
@@ -215,10 +227,11 @@ export function createRestoreHandler({
       } catch {
         return send(response, 503, { error: 'RESTORE_SERVICE_UNAVAILABLE' });
       }
-      let auditIdentity = null;
-      try { auditIdentity = await authRuntime.verifyLoginAuthorization(request.headers?.authorization); }
-      catch { auditIdentity = null; }
-      if (!auditIdentity || auditIdentity.kind !== 'student') {
+      let verifiedAuditIdentity = null;
+      try { verifiedAuditIdentity = await authRuntime.verifyLoginAuthorization(request.headers?.authorization); }
+      catch { verifiedAuditIdentity = null; }
+      const auditIdentity = resolveRestoreIdentity(verifiedAuditIdentity, env);
+      if (!auditIdentity) {
         response.setHeader('WWW-Authenticate', 'Bearer');
         return send(response, 401, { error: 'UNAUTHORIZED' });
       }
@@ -263,9 +276,10 @@ export function createRestoreHandler({
       response.setHeader('WWW-Authenticate', 'Bearer');
       return send(response, 401, { error: 'UNAUTHORIZED' });
     }
-    if (identity.kind !== 'student'
-        || (env.RESTORE_B_OWNER_ID && identity.userId !== env.RESTORE_B_OWNER_ID)
-        || (env.RESTORE_OPERATOR_USER_ID && identity.userId !== env.RESTORE_OPERATOR_USER_ID)) {
+    const restoreIdentity = resolveRestoreIdentity(identity, env);
+    if (!restoreIdentity
+        || (env.RESTORE_B_OWNER_ID && restoreIdentity.userId !== env.RESTORE_B_OWNER_ID)
+        || (env.RESTORE_OPERATOR_USER_ID && restoreIdentity.userId !== env.RESTORE_OPERATOR_USER_ID)) {
       return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
     }
     if (typeof request.headers?.origin === 'string' && request.headers.origin !== config.publicAppUrl) {
@@ -295,9 +309,9 @@ export function createRestoreHandler({
       return send(response, 503, { error: 'UNVERIFIED_NOTE_BACKUP' });
     }
     if (id !== snapshot.row.id) return send(response, 404, { error: 'NOTE_NOT_IN_BACKUP' });
-    if (identity.userId !== env.RESTORE_B_OWNER_ID
-        || identity.userId !== env.RESTORE_OPERATOR_USER_ID
-        || identity.userId !== snapshot.row.owner_id) {
+    if (restoreIdentity.userId !== env.RESTORE_B_OWNER_ID
+        || restoreIdentity.userId !== env.RESTORE_OPERATOR_USER_ID
+        || restoreIdentity.userId !== snapshot.row.owner_id) {
       return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
     }
 
@@ -305,7 +319,7 @@ export function createRestoreHandler({
       const store = noteStore(runtime.supabase);
       const common = {
         ...inputs,
-        identityUserId: identity.userId,
+        identityUserId: restoreIdentity.userId,
         pinnedBOwnerId: env.RESTORE_B_OWNER_ID,
         id,
       };
@@ -375,7 +389,7 @@ export function createRestoreHandler({
 
       appendRecoveryAudit({
         ownerId: restored.ownerId,
-        actorId: identity.userId,
+        actorId: restoreIdentity.userId,
         noteId: restored.id,
         action: 'restore_one_note',
         result: restored.status,
