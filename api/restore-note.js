@@ -239,6 +239,33 @@ export function createRestoreHandler({
       return send(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
+    const id = requestedId(request);
+    if (!id) return send(response, 400, { error: 'INVALID_NOTE_ID' });
+
+    // Authenticate before looking for recovery material so anonymous calls
+    // consistently receive JSON 401 even when the snapshot is intentionally absent.
+    let runtime;
+    let identity;
+    try {
+      if (!runtimePromise) runtimePromise = Promise.resolve(runtimeLoader());
+      runtime = await runtimePromise;
+      identity = await runtime.verifyLoginAuthorization(request.headers?.authorization);
+    } catch {
+      return send(response, 503, { error: 'RESTORE_SERVICE_UNAVAILABLE' });
+    }
+    if (!identity) {
+      response.setHeader('WWW-Authenticate', 'Bearer');
+      return send(response, 401, { error: 'UNAUTHORIZED' });
+    }
+    if (identity.kind !== 'student'
+        || (env.RESTORE_B_OWNER_ID && identity.userId !== env.RESTORE_B_OWNER_ID)
+        || (env.RESTORE_OPERATOR_USER_ID && identity.userId !== env.RESTORE_OPERATOR_USER_ID)) {
+      return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
+    }
+    if (typeof request.headers?.origin === 'string' && request.headers.origin !== config.publicAppUrl) {
+      return send(response, 403, { error: 'ORIGIN_DENIED' });
+    }
+
     let inputs;
     try {
       inputs = snapshotInputs(env);
@@ -250,15 +277,11 @@ export function createRestoreHandler({
         'INVALID_NOTE_BACKUP', 'INVALID_BACKUP_TIME', 'NOT_VERIFIED_BEFORE_INCIDENT',
         'BACKUP_CONTENT_HASH_MISMATCH', 'RESTORE_OPERATOR_NOT_PINNED',
       ]);
-      const status = code === 'RESTORE_DISABLED' || code === 'VERIFIED_BACKUP_NOT_CONFIGURED'
-        || code === 'UNVERIFIED_NOTE_BACKUP' ? 503 : 503;
       recordOperation('backup_outer_sha256', { passed: false, code: code.toLowerCase() });
       recordOperation('backup_content_sha256', { passed: false, code: code.toLowerCase() });
-      return send(response, status, { error: code });
+      return send(response, 503, { error: code });
     }
 
-    const id = requestedId(request);
-    if (!id) return send(response, 400, { error: 'INVALID_NOTE_ID' });
     let snapshot;
     try { snapshot = verifyNoteBackup(inputs); }
     catch {
@@ -266,26 +289,13 @@ export function createRestoreHandler({
       return send(response, 503, { error: 'UNVERIFIED_NOTE_BACKUP' });
     }
     if (id !== snapshot.row.id) return send(response, 404, { error: 'NOTE_NOT_IN_BACKUP' });
-
-    if (typeof request.headers?.origin === 'string' && request.headers.origin !== config.publicAppUrl) {
-      return send(response, 403, { error: 'ORIGIN_DENIED' });
+    if (identity.userId !== env.RESTORE_B_OWNER_ID
+        || identity.userId !== env.RESTORE_OPERATOR_USER_ID
+        || identity.userId !== snapshot.row.owner_id) {
+      return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
     }
 
-    try {
-      if (!runtimePromise) runtimePromise = Promise.resolve(runtimeLoader());
-      const runtime = await runtimePromise;
-      const identity = await runtime.verifyLoginAuthorization(request.headers?.authorization);
-      if (!identity) {
-        response.setHeader('WWW-Authenticate', 'Bearer');
-        return send(response, 401, { error: 'UNAUTHORIZED' });
-      }
-      if (identity.kind !== 'student'
-          || identity.userId !== env.RESTORE_B_OWNER_ID
-          || identity.userId !== env.RESTORE_OPERATOR_USER_ID) {
-        return send(response, 403, { error: 'RESTORE_NOT_AUTHORIZED' });
-      }
-
-      const store = noteStore(runtime.supabase);
+    const store = noteStore(runtime.supabase);
       const common = {
         ...inputs,
         identityUserId: identity.userId,
