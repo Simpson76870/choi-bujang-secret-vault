@@ -1,0 +1,295 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import {
+  contentSha256, sha256, verifyNoteBackup, previewNoteRestore,
+} from '../src/recovery/note.mjs';
+import {
+  appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner,
+} from '../src/recovery/ledger.mjs';
+import { createRestoreHandler } from '../api/restore-note.js';
+
+const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const OTHER = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const title = 'B virtual test note';
+const backupBody = 'Synthetic pre-incident backup content for tests only.';
+const capturedAt = '2026-10-01T00:00:00.000Z';
+const verifiedAt = '2026-10-02T00:00:00.000Z';
+const incidentAt = '2026-10-03T00:00:00.000Z';
+
+function backupRaw(overrides = {}) {
+  const row = {
+    schema: 'aleph.recovery.note-backup.v1',
+    version: 'stage10-safe-v1',
+    id: ID,
+    ownerId: B,
+    title,
+    body: backupBody,
+    capturedAt,
+    verifiedAt,
+    contentSha256: contentSha256({ id: ID, owner_id: B, title, body: backupBody }),
+    ...overrides,
+  };
+  return JSON.stringify(row);
+}
+function makeEnv(raw = backupRaw()) {
+  return {
+    RESTORE_ENABLED: '1',
+    RESTORE_B_OWNER_ID: B,
+    RESTORE_OPERATOR_USER_ID: B,
+    RESTORE_NOTE_SNAPSHOT_BASE64: Buffer.from(raw, 'utf8').toString('base64'),
+    RESTORE_NOTE_BACKUP_SHA256: sha256(raw),
+    RESTORE_INCIDENT_AT: incidentAt,
+    SUPABASE_URL: 'https://example-project.supabase.co',
+    SUPABASE_SECRET_KEY: 'TEST_ONLY_NOT_A_REAL_SECRET',
+    RESTORE_PUBLIC_APP_URL: 'https://stage10-test.vercel.app',
+  };
+}
+function responseRecorder() {
+  return { statusCode: 0, payload: null, headers: {},
+    setHeader(key, value) { this.headers[key.toLowerCase()] = value; },
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.payload = value; return this; },
+  };
+}
+function fakeDb(initialRows) {
+  const rows = new Map(initialRows.map(row => [row.id, { ...row }]));
+  return {
+    rows,
+    from(table) {
+      assert.equal(table, 'training_notes');
+      let operation = 'select';
+      let data = null;
+      const filters = [];
+      return {
+        select() { return this; },
+        eq(key, value) { filters.push([key, value, '=']); return this; },
+        neq(key, value) { filters.push([key, value, '!=']); return this; },
+        limit() { return this; },
+        insert(record) { operation = 'insert'; data = { ...record }; return this; },
+        update(record) { operation = 'update'; data = { ...record }; return this; },
+        async maybeSingle() {
+          const matches = row => filters.every(([key, value, op]) =>
+            op === '=' ? row?.[key] === value : row?.[key] !== value);
+          if (operation === 'select') {
+            const found = [...rows.values()].find(matches) ?? null;
+            return { data: found ? { ...found } : null, error: null };
+          }
+          if (operation === 'insert') {
+            if (rows.has(data.id)) return { data: null, error: { code: '23505' } };
+            rows.set(data.id, { ...data });
+            return { data: { ...data }, error: null };
+          }
+          const found = [...rows.values()].find(matches) ?? null;
+          if (!found) return { data: null, error: null };
+          Object.assign(found, data);
+          return { data: { ...found }, error: null };
+        },
+      };
+    },
+  };
+}
+function response(status, body) {
+  return { status, json: async () => body };
+}
+function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, rows } = {}) {
+  const db = fakeDb(rows ?? [
+    { id: ID, owner_id: B, title: 'tampered title', content: 'tampered text' },
+    { id: OTHER, owner_id: A, title: 'A stays unchanged', content: 'do not expose' },
+  ]);
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    const target = new URL(url);
+    assert.equal(options.method, 'GET', 'post-restore regression requests must remain GET-only');
+    assert.equal(options.headers.authorization, 'Bearer test-bearer');
+    calls.push(target.pathname);
+    const id = target.pathname.split('/').pop();
+    if (id === ID) {
+      const row = db.rows.get(ID);
+      return response(row?.owner_id === B ? 200 : 404, row?.owner_id === B
+        ? { id: row.id, title: row.title, body: row.content } : { error: 'NOTE_NOT_FOUND' });
+    }
+    return response(404, { error: 'NOTE_NOT_FOUND' });
+  };
+  const handler = createRestoreHandler({
+    env,
+    runtimeLoader: async () => ({
+      supabase: db,
+      verifyLoginAuthorization: async token => token === 'Bearer test-bearer' ? identity : null,
+    }),
+    fetchImpl,
+  });
+  return { handler, db, calls, env };
+}
+async function invoke(handler, { method, id = ID, action = 'restore', token = 'Bearer test-bearer', body, origin } = {}) {
+  const response = responseRecorder();
+  const headers = { authorization: token };
+  if (origin) headers.origin = origin;
+  await handler({ method, query: { action, id }, headers, body }, response);
+  return response;
+}
+
+test('environment backup uses a constant-time whole-snapshot hash and a second content hash', () => {
+  const raw = backupRaw();
+  const inputs = { raw, trustedSha256: sha256(raw), incidentAt, pinnedBOwnerId: B };
+  assert.equal(verifyNoteBackup(inputs).row.id, ID);
+  assert.throws(() => verifyNoteBackup({ ...inputs, trustedSha256: '0'.repeat(64) }), /UNVERIFIED_NOTE_BACKUP/u);
+  const changed = backupRaw({ body: 'tampered body' });
+  assert.throws(() => verifyNoteBackup({
+    raw: changed, trustedSha256: sha256(changed), incidentAt, pinnedBOwnerId: B,
+  }), /BACKUP_CONTENT_HASH_MISMATCH/u);
+});
+
+test('backup verification requires pre-incident verification timestamp and pinned owner', () => {
+  const raw = backupRaw();
+  const inputs = { raw, trustedSha256: sha256(raw), incidentAt, pinnedBOwnerId: B };
+  assert.throws(() => verifyNoteBackup({ ...inputs, incidentAt: '2026-10-01T12:00:00.000Z' }), /NOT_VERIFIED_BEFORE_INCIDENT/u);
+  assert.throws(() => verifyNoteBackup({ ...inputs, pinnedBOwnerId: A }), /INVALID_NOTE_BACKUP/u);
+});
+
+test('restore preview exposes hashes, changed fields and a versioned plan but never the note body', () => {
+  const raw = backupRaw();
+  const current = { id: ID, owner_id: B, title: 'tampered title', content: 'tampered text' };
+  const plan = previewNoteRestore({
+    raw, trustedSha256: sha256(raw), incidentAt, pinnedBOwnerId: B,
+    identityUserId: B, id: ID, current,
+  });
+  assert.equal(plan.backupVersion, 'stage10-safe-v1');
+  assert.deepEqual(plan.changedFields, ['title', 'body']);
+  assert.equal(JSON.stringify(plan).includes(backupBody), false);
+  assert.equal(JSON.stringify(plan).includes('tampered text'), false);
+  assert.match(plan.planSha256, /^[a-f0-9]{64}$/u);
+});
+
+test('missing backup environment returns 503 and malformed IDs return 400', async () => {
+  const missing = harness({ env: { RESTORE_ENABLED: '1' } });
+  const missingResponse = await invoke(missing.handler, { method: 'GET' });
+  assert.equal(missingResponse.statusCode, 503);
+
+  const configured = harness();
+  const badId = await invoke(configured.handler, { method: 'GET', id: 'not-a-uuid' });
+  assert.equal(badId.statusCode, 400);
+  assert.equal(badId.payload.error, 'INVALID_NOTE_ID');
+});
+
+test('corrupted whole snapshot hash stops before any database change', async () => {
+  const env = makeEnv();
+  env.RESTORE_NOTE_BACKUP_SHA256 = '0'.repeat(64);
+  const instance = harness({ env });
+  const before = structuredClone(instance.db.rows.get(ID));
+  const result = await invoke(instance.handler, { method: 'GET' });
+  assert.equal(result.statusCode, 503);
+  assert.equal(result.payload.error, 'UNVERIFIED_NOTE_BACKUP');
+  assert.deepEqual(instance.db.rows.get(ID), before);
+});
+
+test('only B with a verified bearer token may restore the pinned backup row', async () => {
+  const denied = harness({ identity: { kind: 'student', userId: A } });
+  const responseDenied = await invoke(denied.handler, { method: 'GET' });
+  assert.equal(responseDenied.statusCode, 403);
+  assert.equal(responseDenied.payload.error, 'RESTORE_NOT_AUTHORIZED');
+
+  const unauthenticated = harness();
+  const responseUnauth = await invoke(unauthenticated.handler, { method: 'GET', token: '' });
+  assert.equal(responseUnauth.statusCode, 401);
+});
+
+test('extra request-body owner, role, ID or content fields are rejected with 400', async () => {
+  const instance = harness();
+  const planResponse = await invoke(instance.handler, { method: 'GET' });
+  assert.equal(planResponse.statusCode, 200);
+  const before = structuredClone(instance.db.rows.get(ID));
+  const body = { planSha256: planResponse.payload.planSha256, ownerId: B, body: backupBody };
+  const invalid = await invoke(instance.handler, { method: 'POST', body });
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.payload.error, 'INVALID_PLAN_CONFIRMATION');
+  assert.deepEqual(instance.db.rows.get(ID), before);
+});
+
+test('POST rechecks the env snapshot, restores one note, executes both live GET retests and audits metadata only', async () => {
+  const instance = harness();
+  const planResponse = await invoke(instance.handler, { method: 'GET' });
+  assert.equal(planResponse.statusCode, 200);
+  const apply = await invoke(instance.handler, {
+    method: 'POST', body: { planSha256: planResponse.payload.planSha256 },
+  });
+
+  assert.equal(apply.statusCode, 200);
+  assert.equal(apply.payload.ownerVerified, true);
+  assert.equal(apply.payload.restored, true);
+  assert.equal(apply.payload.contentSha256, contentSha256({
+    id: ID, owner_id: B, title, body: backupBody,
+  }));
+  assert.equal(apply.payload.restore.retests.normal.attempted, true);
+  assert.equal(apply.payload.restore.retests.normal.status, 200);
+  assert.equal(apply.payload.restore.retests.normal.passed, true);
+  assert.equal(apply.payload.restore.retests.forbidden.attempted, true);
+  assert.equal(apply.payload.restore.retests.forbidden.status, 404);
+  assert.equal(apply.payload.restore.retests.forbidden.passed, true);
+  assert.equal(apply.payload.restore.retests.passed, true);
+  assert.deepEqual(instance.calls, ['/api/notes/' + ID, '/api/notes/' + OTHER]);
+  assert.deepEqual(instance.db.rows.get(OTHER), {
+    id: OTHER, owner_id: A, title: 'A stays unchanged', content: 'do not expose',
+  });
+  assert.equal(JSON.stringify(apply.payload).includes(backupBody), false);
+  assert.equal(JSON.stringify(apply.payload).includes('do not expose'), false);
+
+  const events = getRecoveryAuditForOwner(B);
+  const latest = events.at(-1);
+  assert.equal(latest.action, 'restore_one_note');
+  assert.equal(latest.retests.passed, true);
+  assert.equal(JSON.stringify(latest).includes(backupBody), false);
+
+  const auditResponse = await invoke(instance.handler, { method: 'GET', action: 'audit' });
+  assert.equal(auditResponse.statusCode, 200);
+  assert.ok(auditResponse.payload.events.every(event => !Object.hasOwn(event, 'ownerId')));
+  assert.ok(auditResponse.payload.events.every(event => event.noteId === ID));
+
+  const operations = await invoke(instance.handler, { method: 'GET', action: 'operations', token: '' });
+  assert.equal(operations.statusCode, 200);
+  assert.equal(operations.payload.auditHistory.status, 'measured');
+  assert.equal(operations.payload.checks.find(row => row.name === 'post_restore_own_note_read').status, 'measured');
+  assert.equal(operations.payload.checks.find(row => row.name === 'post_restore_foreign_note_denial').passed, true);
+  assert.equal(operations.payload.checks.find(row => row.name === 'stages_1_to_9_regression').status, 'not_run');
+});
+
+test('unknown memo ID is 404; another owner conflict is 403; stale confirmation is rejected', async () => {
+  const unknown = harness();
+  const notFound = await invoke(unknown.handler, { method: 'GET', id: OTHER });
+  assert.equal(notFound.statusCode, 404);
+  assert.equal(notFound.payload.error, 'NOTE_NOT_IN_BACKUP');
+
+  const conflict = harness({ rows: [
+    { id: ID, owner_id: A, title: 'A row', content: 'unchanged' },
+  ] });
+  const conflictResponse = await invoke(conflict.handler, { method: 'GET' });
+  assert.equal(conflictResponse.statusCode, 403);
+  assert.equal(conflictResponse.payload.error, 'NOTE_OWNER_CONFLICT');
+
+  const stale = harness();
+  const plan = await invoke(stale.handler, { method: 'GET' });
+  const row = stale.db.rows.get(ID);
+  row.content = 'changed after preview';
+  const staleResult = await invoke(stale.handler, {
+    method: 'POST', body: { planSha256: plan.payload.planSha256 },
+  });
+  assert.equal(staleResult.statusCode, 400);
+  assert.equal(staleResult.payload.error, 'INVALID_PLAN_CONFIRMATION');
+});
+
+test('the process-local audit ledger never returns another owner’s history', () => {
+  appendRecoveryAudit({
+    ownerId: A, actorId: A, noteId: OTHER, action: 'test_only', result: 'measured',
+    backupVersion: 'safe-v1', contentSha256: 'a'.repeat(64),
+  });
+  assert.ok(getRecoveryAuditForOwner(A).some(item => item.noteId === OTHER));
+  assert.ok(getRecoveryAuditForOwner(B).every(item => item.noteId === ID));
+});
+
+test('operations never label an unexecuted check as passed', () => {
+  const checks = getOperationsReport().checks;
+  const regression = checks.find(row => row.name === 'stages_1_to_9_regression');
+  assert.equal(regression.status, 'not_run');
+  assert.equal(regression.passed, null);
+});
