@@ -24,6 +24,21 @@ const SIGNAL_KEYS = Object.freeze(['source', 'region', 'network', 'hour'].sort()
 const EVENT_KEYS = Object.freeze(['kind', 'ageSeconds', 'count'].sort());
 export const RULE_IDS = Object.freeze(['device_registered', 'step_up_required', RESOURCE_SCOPE_RULE]);
 
+// Read-only policy projection for Stage 10 review tooling. The decider continues
+// to use the same constants above; this export does not change decision behavior.
+export const RECOVERY_POLICY_VIEW = Object.freeze({
+  ruleIds: RULE_IDS,
+  defaultDecision: 'deny',
+  requireDeviceRegistered: true,
+  stepUp: Object.freeze({
+    riskSignalWindowSeconds: 300,
+    riskSignalMinimumCount: 10,
+    fixtureRiskThreshold: 2,
+    verifiedAuthMaximumAgeSeconds: 900,
+  }),
+  resources: starterResources,
+});
+
 function hasExactKeys(value, expected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value).sort();
