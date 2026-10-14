@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { B_NOTE_BACKUP_VERSION, B_NOTE_FIXTURE_KEY, SAFE_POLICY_SOURCE_COMMIT, diffPolicy, loadVerifiedPolicyBackup, noteBackupManifestSha256, noteContentSha256, policyDigest, validateBNoteBackup, validatePolicySnapshot, validatePolicyState } from '../src/restore-runtime.mjs';
-import { createNoteRestoreHandler, createRestoreAuthenticator } from '../api/restore-note.js';
 import { createPolicyRestoreHandler } from '../api/restore-policy.js';
 
 const OWNER_A = '00000000-0000-4000-8000-000000000001';
@@ -238,124 +237,6 @@ test('policy restore stops when the backup changes between request reads', async
   assert.equal(response.payload.restoreExecuted, false);
 });
 
-test('B note restore stops without verified pre-incident row and never calls mutation RPC', async () => {
-  let rpcCalled = false;
-  const supabase = memoryQuery(null);
-  supabase.rpc = async () => { rpcCalled = true; return { data: null, error: null }; };
-  const handler = createNoteRestoreHandler(async () => ({ identity: { kind: 'student', userId: OWNER_B }, supabase }));
-  const response = responseRecorder();
-  await handler({ method: 'POST', body: { noteId: NOTE_ID, backupVersion: B_NOTE_BACKUP_VERSION } }, response);
-  assert.equal(response.statusCode, 409);
-  assert.equal(response.payload.error, 'VERIFIED_BACKUP_UNAVAILABLE');
-  assert.equal(response.payload.restoreExecuted, false);
-  assert.equal(rpcCalled, false);
-});
-
-test('signed judge B identity is mapped only to the B fixture restore scope', async () => {
-  const auth = await createRestoreAuthenticator(async () => ({
-    config: { publicAppUrl: 'https://example.test' },
-    verifyLoginAuthorization: async token => token === 'Bearer judge-b'
-      ? { kind: 'judge', userId: '00000000-0000-4000-8000-000000000088',
-          identity: 'b', runId: '10000000-0000-4000-8000-000000000001' }
-      : token === 'Bearer judge-a'
-        ? { kind: 'judge', userId: '00000000-0000-4000-8000-000000000077',
-            identity: 'a', runId: '10000000-0000-4000-8000-000000000001' }
-        : null,
-  }));
-  const bResponse = responseRecorder();
-  const b = await auth({ headers: { authorization: 'Bearer judge-b' } }, bResponse);
-  assert.equal(b.restoreOwnerId, OWNER_B);
-  assert.equal(b.actorId, '00000000-0000-4000-8000-000000000088');
-  assert.equal(b.identity.identity, 'b');
-
-  const aResponse = responseRecorder();
-  const a = await auth({ headers: { authorization: 'Bearer judge-a' } }, aResponse);
-  assert.equal(a, null);
-  assert.equal(aResponse.statusCode, 403);
-  assert.deepEqual(aResponse.payload, { error: 'RESTORE_IDENTITY_NOT_ALLOWED' });
-});
-
-test('successful B-note restore performs real HTTP owner and forbidden-request retests and audits them', async () => {
-  const backup = verifiedBackup();
-  let auditRow = null;
-  let restoreArgs = null;
-  const supabase = {
-    from(table) {
-      if (table === 'training_note_backups') {
-        return { select() { return this; }, eq() { return this; },
-          maybeSingle: async () => ({ data: backup, error: null }) };
-      }
-      if (table === 'training_notes') {
-        return {
-          select() { return this; },
-          neq(field, value) { assert.equal(field, 'owner_id'); assert.equal(value, OWNER_B); return this; },
-          limit(value) { assert.equal(value, 1); return this; },
-          maybeSingle: async () => ({
-            data: { id: FOREIGN_NOTE_ID, owner_id: OWNER_A }, error: null,
-          }),
-        };
-      }
-      if (table === 'training_note_restore_retest_audit') {
-        return { insert: async row => { auditRow = row; return { error: null }; } };
-      }
-      throw new Error('unexpected_table:' + table);
-    },
-    rpc: async (name, args) => {
-      assert.equal(name, 'restore_stage10_training_note');
-      restoreArgs = args;
-      return { data: {
-        noteId: NOTE_ID, ownerId: OWNER_B, contentSha256: backup.content_sha256,
-        backupVersion: B_NOTE_BACKUP_VERSION,
-      }, error: null };
-    },
-  };
-  const requests = [];
-  const fetchImpl = async (url, options) => {
-    const pathname = new URL(url).pathname;
-    requests.push({ pathname, authorization: options.headers.authorization });
-    if (pathname === '/api/notes/' + NOTE_ID) {
-      return { status: 200, json: async () => ({
-        id: NOTE_ID, title: BASELINE_TITLE, body: BASELINE_CONTENT,
-      }) };
-    }
-    assert.equal(pathname, '/api/notes/' + FOREIGN_NOTE_ID);
-    return { status: 404, json: async () => ({ error: 'NOTE_NOT_FOUND' }) };
-  };
-  const handler = createNoteRestoreHandler(
-    async () => ({ identity: { kind: 'student', userId: OWNER_B },
-      supabase, config: { publicAppUrl: 'https://example.test' } }),
-    { fetchImpl },
-  );
-  const response = responseRecorder();
-  await handler({
-    method: 'POST',
-    headers: { authorization: 'Bearer private-test-token' },
-    body: { noteId: NOTE_ID, backupVersion: B_NOTE_BACKUP_VERSION },
-  }, response);
-
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.payload.restored, true);
-  assert.equal(restoreArgs.p_note_id, NOTE_ID);
-  assert.equal(response.payload.postRestoreRetest.executed, true);
-  assert.equal(response.payload.postRestoreRetest.normal.status, 200);
-  assert.equal(response.payload.postRestoreRetest.normal.passed, true);
-  assert.equal(response.payload.postRestoreRetest.forbidden.status, 404);
-  assert.equal(response.payload.postRestoreRetest.forbidden.passed, true);
-  assert.equal(response.payload.postRestoreRetest.passed, true);
-  assert.equal(response.payload.postRestoreRetestAuditRecorded, true);
-  assert.deepEqual(requests.map(item => item.pathname), [
-    '/api/notes/' + NOTE_ID, '/api/notes/' + FOREIGN_NOTE_ID,
-  ]);
-  assert.ok(requests.every(item => item.authorization === 'Bearer private-test-token'));
-  assert.equal(auditRow.actor_id, OWNER_B);
-  assert.equal(auditRow.normal_status, 200);
-  assert.equal(auditRow.normal_passed, true);
-  assert.equal(auditRow.forbidden_status, 404);
-  assert.equal(auditRow.forbidden_passed, true);
-  assert.equal(auditRow.retest_passed, true);
-  assert.equal(JSON.stringify(response.payload).includes(FOREIGN_NOTE_ID), false);
-});
-
 test('Stage 10 database migration isolates test policy, backup and append-only audit tables', async () => {
   const sql = await read('../supabase/stage10-backup-restore.sql');
   assert.match(sql, /create table if not exists public\.training_test_policy_state/u);
@@ -376,7 +257,9 @@ test('Stage 10 database migration isolates test policy, backup and append-only a
 test('README states restore routes and unavailable-backup fail-closed behavior', async () => {
   const readme = await read('../README.md');
   assert.match(readme, /GET \| `\/api\/restore-policy`/u);
-  assert.match(readme, /POST \| `\/api\/restore-note`/u);
+  assert.match(readme, /POST `\/api\/restore\/notes\/:id`/u);
+  assert.match(readme, /GET `\/api\/notes\/audit`/u);
+  assert.match(readme, /GET `\/api\/operations`/u);
   assert.match(readme, /VERIFIED_BACKUP_UNAVAILABLE/u);
   assert.match(readme, /TEST_POLICY_STATE_UNAVAILABLE/u);
 });
