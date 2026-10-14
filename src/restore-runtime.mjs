@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 export const SAFE_POLICY_VERSION = 'stage9-safe-policy-v1';
@@ -131,6 +131,14 @@ export function noteContentSha256(content) {
   return sha256(content);
 }
 
+function timingSafeHexEqual(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string'
+      || !SHA256.test(actual) || !SHA256.test(expected)) return false;
+  const left = Buffer.from(actual, 'hex');
+  const right = Buffer.from(expected, 'hex');
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 export function noteBackupManifestSha256(snapshot) {
   return sha256(canonicalJson({
     noteId: snapshot.note_id,
@@ -157,9 +165,8 @@ export function validateBNoteBackup(snapshot, expectedNoteId, expectedOwnerId) {
       || typeof snapshot.verified_at !== 'string'
       || !Number.isFinite(Date.parse(snapshot.verified_at))
       || !SHA256.test(snapshot.content_sha256 ?? '')
-      || snapshot.content_sha256 !== noteContentSha256(snapshot.content)
-      || !SHA256.test(snapshot.manifest_sha256 ?? '')
-      || snapshot.manifest_sha256 !== noteBackupManifestSha256(snapshot)) {
+      || !timingSafeHexEqual(snapshot.content_sha256, noteContentSha256(snapshot.content))
+      || !timingSafeHexEqual(snapshot.manifest_sha256, noteBackupManifestSha256(snapshot))) {
     throw new Error('VERIFIED_BACKUP_INVALID');
   }
   return snapshot;
