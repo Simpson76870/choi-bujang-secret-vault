@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { noteBackupManifestSha256, validateBNoteBackup } from '../restore-runtime.mjs';
 
 const HEX = /^[a-f0-9]{64}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -62,35 +63,45 @@ export function verifyNoteBackup({ raw, trustedSha256, incidentAt, pinnedBOwnerI
 
   let item;
   try { item = JSON.parse(raw); } catch { fail('INVALID_NOTE_BACKUP'); }
-
+  const expectedKeys = 'backup_version,content,content_sha256,fixture_key,manifest_sha256,note_id,owner_id,source_commit,title,verified_at';
   if (!item || typeof item !== 'object' || Array.isArray(item)
-      || item.schema !== 'aleph.recovery.note-backup.v1'
-      || Object.keys(item).sort().join(',') !==
-        'body,capturedAt,contentSha256,id,ownerId,schema,title,verifiedAt,version'
-      || typeof item.version !== 'string'
-      || !/^[a-z][a-z0-9_-]{0,63}$/u.test(item.version)
-      || !UUID.test(item.id ?? '')
-      || !UUID.test(item.ownerId ?? '')
-      || !UUID.test(pinnedBOwnerId ?? '')
-      || item.ownerId !== pinnedBOwnerId
-      || !validText(item.title, 120)
-      || !validText(item.body, 2000)
-      || !HEX.test(item.contentSha256 ?? '')) {
+      || Object.keys(item).sort().join(',') !== expectedKeys) {
     fail('INVALID_NOTE_BACKUP');
   }
 
-  if (timestamp(item.capturedAt) > timestamp(item.verifiedAt)
-      || timestamp(item.verifiedAt) >= timestamp(incidentAt)) {
+  if (!constantTimeHexEqual(sha256(item.content ?? ''), item.content_sha256)) {
+    fail('BACKUP_CONTENT_HASH_MISMATCH');
+  }
+  if (!constantTimeHexEqual(noteBackupManifestSha256(item), item.manifest_sha256)) {
+    fail('BACKUP_MANIFEST_HASH_MISMATCH');
+  }
+
+  let verified;
+  try {
+    verified = validateBNoteBackup(item, item.note_id, pinnedBOwnerId);
+  } catch {
+    fail('INVALID_NOTE_BACKUP');
+  }
+  if (timestamp(verified.verified_at) >= timestamp(incidentAt)) {
     fail('NOT_VERIFIED_BEFORE_INCIDENT');
   }
 
-  const row = { id: item.id, owner_id: item.ownerId, title: item.title, body: item.body };
-  if (!constantTimeHexEqual(contentSha256(row), item.contentSha256)) {
-    fail('BACKUP_CONTENT_HASH_MISMATCH');
-  }
-  return { item, row, trustedSha256 };
+  const row = {
+    id: verified.note_id,
+    owner_id: verified.owner_id,
+    title: verified.title,
+    body: verified.content,
+  };
+  return {
+    item: {
+      version: verified.backup_version,
+      contentSha256: contentSha256(row),
+      bodySha256: verified.content_sha256,
+    },
+    row,
+    trustedSha256,
+  };
 }
-
 function presentRow(row) {
   return row == null ? null : {
     id: row.id,
@@ -133,7 +144,7 @@ export function previewNoteRestore({
     id,
     ownerId: pinnedBOwnerId,
     beforeSha256,
-    contentSha256: verified.item.contentSha256,
+    contentSha256: verified.item.bodySha256,
     backupSha256: trustedSha256,
     backupVersion: verified.item.version,
     changedFields,
@@ -165,14 +176,13 @@ export async function restoreNoteOnce({
   if (!fresh || fresh.raw !== raw || fresh.trustedSha256 !== trustedSha256) {
     fail('UNVERIFIED_NOTE_BACKUP');
   }
-  verifyNoteBackup({
+  const verifiedFresh = verifyNoteBackup({
     raw: fresh.raw, trustedSha256: fresh.trustedSha256, incidentAt, pinnedBOwnerId,
   });
 
   if (preview.status !== 'already_restored') {
-    const verified = verifyNoteBackup({ raw, trustedSha256, incidentAt, pinnedBOwnerId });
-    const saved = await store.restoreVerified(verified.row, current);
-    if (saved?.transactionalReadbackVerified !== true || saved?.id !== verified.row.id) {
+    const saved = await store.restoreVerified(verifiedFresh.row, current);
+    if (saved?.transactionalReadbackVerified !== true || saved?.id !== verifiedFresh.row.id) {
       fail('RESTORE_TRANSACTION_NOT_VERIFIED');
     }
     return {
@@ -187,7 +197,7 @@ export async function restoreNoteOnce({
 
   const after = await store.find(id);
   if (!after || after.owner_id !== pinnedBOwnerId
-      || !constantTimeHexEqual(contentSha256(presentRow(after)), preview.contentSha256)) {
+      || !constantTimeHexEqual(contentSha256(presentRow(after)), verifiedFresh.item.contentSha256)) {
     fail('POST_RESTORE_VERIFICATION_FAILED');
   }
   return {
