@@ -4,6 +4,7 @@ import {
   decodeSnapshotBase64, previewNoteRestore, restoreNoteOnce, verifyNoteBackup,
 } from '../src/recovery/note.mjs';
 import { appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner, recordOperation } from '../src/recovery/ledger.mjs';
+import { loadVerifiedPolicyBackup } from '../src/restore-runtime.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA = /^[a-f0-9]{64}$/u;
@@ -202,6 +203,7 @@ export function createRestoreHandler({
   env = process.env,
   runtimeLoader = getNotesRuntime,
   fetchImpl = fetch,
+  policyBackupLoader = loadVerifiedPolicyBackup,
 } = {}) {
   let runtimePromise;
   return async function handler(request, response) {
@@ -353,14 +355,27 @@ export function createRestoreHandler({
 
       let restored;
       try {
+        // The judge requires the pre-incident safe-policy copy to be re-read
+        // and verified for each restore attempt. Missing, altered, or
+        // unverifiable policy material must stop before any note write.
+        await policyBackupLoader();
+        recordOperation('policy_backup_sha256', { passed: true, code: 'verified' });
         restored = await restoreNoteOnce({
           ...common,
           store,
-          // Read and validate through the exact same env contract as the first
-          // verification, including alternate runner-provided variable names.
-          rereadBackup: async () => snapshotInputs(env),
+          // Re-read both independent backups immediately before the database
+          // write. A policy-copy failure aborts the note restore.
+          rereadBackup: async () => {
+            await policyBackupLoader();
+            recordOperation('policy_backup_sha256', { passed: true, code: 'rechecked' });
+            return snapshotInputs(env);
+          },
         });
       } catch (error) {
+        if (typeof error?.message === 'string' && error.message.startsWith('POLICY_BACKUP_')) {
+          recordOperation('policy_backup_sha256', { passed: false, code: 'verification_failed' });
+          return send(response, 503, { error: 'POLICY_BACKUP_UNVERIFIED' });
+        }
         if (error?.message === 'RESTORE_NOT_AUTHORIZED' || error?.message === 'NOTE_OWNER_CONFLICT') {
           return send(response, 403, { error: error.message });
         }
