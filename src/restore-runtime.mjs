@@ -130,9 +130,9 @@ export function diffPolicy(current, restored) {
 // Compare the live, read-only policy projection against the independently
 // verified pre-incident snapshot. This is separate from the user-triggered
 // restore-plan artifact and never writes the operational policy.
-export async function compareCurrentPolicyWithBackup() {
+export async function compareCurrentPolicyWithBackup({ currentPolicy: suppliedPolicy = RECOVERY_POLICY_VIEW } = {}) {
   const snapshot = await loadVerifiedPolicyBackup();
-  const currentPolicy = JSON.parse(JSON.stringify(RECOVERY_POLICY_VIEW));
+  const currentPolicy = JSON.parse(JSON.stringify(suppliedPolicy));
   const changedItems = diffPolicy(currentPolicy, snapshot.policy);
   const currentPolicySha256 = policyDigest(currentPolicy);
   const backupPolicySha256 = policyDigest(snapshot.policy);
