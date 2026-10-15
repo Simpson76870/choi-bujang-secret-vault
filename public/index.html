@@ -171,8 +171,9 @@
           setStatus(deviceStatus, '서버가 등록 기기를 확인했습니다.');
           // Data access is gated by the server approval response for both initial
           // status checks and explicit approval requests.
-          notesPanel.hidden = false;
+          // Keep protected content hidden until the approved request has finished.
           await loadNotes();
+          notesPanel.hidden = false;
         } else {
           // Never leave previously rendered notes visible while approval is absent.
           notesPanel.hidden = true;
