@@ -91,10 +91,9 @@ try {
   }
   for (const attempt of attackAttempts) {
     if (!attempt || typeof attempt !== 'object' || Array.isArray(attempt)
-        || Object.keys(attempt).sort().join(',') !== 'attackId,caseId,expected,observed,requestKey'
+        || Object.keys(attempt).sort().join(',') !== 'attackId,expected,observed'
         || typeof attempt.attackId !== 'string'
-        || typeof attempt.caseId !== 'string' || !/^[a-z0-9][a-z0-9_.-]{0,79}$/iu.test(attempt.caseId)
-        || typeof attempt.requestKey !== 'string' || !/^(GET|POST|PUT|DELETE) \/[^\s]{0,180}$/u.test(attempt.requestKey) || !/^[a-z0-9][a-z0-9_.-]{0,79}$/iu.test(attempt.attackId)
+        || !/^[a-z0-9][a-z0-9_.-]{0,79}$/iu.test(attempt.attackId)
         || typeof attempt.expected !== 'string' || !attempt.expected.trim() || attempt.expected.length > 300
         || typeof attempt.observed !== 'string' || !attempt.observed.trim() || attempt.observed.length > 300) {
       fail('공격 점검 결과에는 attackId·expected·observed만 넣어 주세요.');
