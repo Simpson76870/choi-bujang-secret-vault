@@ -97,7 +97,7 @@ try {
         || typeof attempt.requestKey !== 'string' || !/^(GET|POST|PUT|DELETE) \/[^\s]{0,180}$/u.test(attempt.requestKey) || !/^[a-z0-9][a-z0-9_.-]{0,79}$/iu.test(attempt.attackId)
         || typeof attempt.expected !== 'string' || !attempt.expected.trim() || attempt.expected.length > 300
         || typeof attempt.observed !== 'string' || !attempt.observed.trim() || attempt.observed.length > 300) {
-      fail('요청 증거에는 attackId·caseId·requestKey·expected·observed가 필요합니다.');
+      fail('공격 점검 결과에는 attackId·expected·observed만 넣어 주세요.');
     }
   }
   if (new Set(attackAttempts.map(item => item.attackId)).size !== attackAttempts.length) {
