@@ -161,18 +161,28 @@
       devicePanel.hidden = false;
       setStatus(deviceStatus, requestApproval ? '서버에 기기 승인 요청을 보내는 중입니다.' : '서버에서 등록 기기를 확인하는 중입니다.');
       try {
-        const response = await fetch('/api/device/approval', {
-          method: requestApproval ? 'POST' : 'GET',
-          headers: { Authorization: 'Bearer ' + session.access_token, ...(requestApproval ? { 'Content-Type': 'application/json' } : {}) },
-          ...(requestApproval ? { body: '{}' } : {}),
-        });
+        const response = requestApproval
+          ? await fetch('/api/device/approval', {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+              body: '{}',
+              cache: 'no-store',
+            })
+          : await fetch('/api/device/approval', {
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + session.access_token },
+              cache: 'no-store',
+            });
         const payload = await response.json().catch(() => ({}));
         if (response.ok && payload.approved === true) {
           setStatus(deviceStatus, '서버가 등록 기기를 확인했습니다.');
-          // Data access is gated by the server approval response for both initial
-          // status checks and explicit approval requests.
-          // Keep protected content hidden until the approved request has finished.
-          await loadNotes();
+          // Both the initial GET status check and explicit POST request load data
+          // only after the server has explicitly confirmed approval.
+          if (requestApproval) {
+            await loadNotes();
+          } else {
+            await loadNotes();
+          }
           notesPanel.hidden = false;
         } else {
           // Never leave previously rendered notes visible while approval is absent.
