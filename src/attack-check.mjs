@@ -168,6 +168,7 @@ export async function runAttackChecks(config) {
 
   if (config.step >= 4) {
     let dataApiStatus = 0;
+    let dataApiPath = '/rest/v1/training_notes';
     if (publishableKey) {
       try {
         const apiBase = config.identityProvider.issuer.replace(/\/auth\/v1\/?$/u, '');
@@ -179,6 +180,7 @@ export async function runAttackChecks(config) {
             || directUrl.search || directUrl.hash) {
           throw new Error('originalApiUrl must be the query-free HTTPS training_notes endpoint.');
         }
+        dataApiPath = directUrl.pathname;
         directUrl.searchParams.set('select', 'id');
         directUrl.searchParams.set('limit', '1');
         const directResponse = await fetch(directUrl, {
@@ -195,14 +197,13 @@ export async function runAttackChecks(config) {
     checks.push({
       attackId: 'anonymous_direct_data_api',
       expected: 'publishable/anon 키의 직접 Data API SELECT는 권한 오류로 거부',
-      observed: anonDenied ? 'anon direct Data API는 권한 오류로 거부함 (HTTP ' + dataApiStatus + ')'
-        : 'anon direct Data API 권한 거부를 확인하지 못함 (HTTP ' + dataApiStatus + ')',
+      observed: 'GET ' + dataApiPath + ' — HTTP ' + dataApiStatus + '; ' + (anonDenied ? 'anon 권한 거부 확인' : 'anon 권한 거부 미확인'),
     });
   }
   if (config.step >= 10) {
     for (const [attackId, path] of [
       ['notes_audit_unauthenticated', '/api/notes/audit'],
-      ['restore_note_unauthenticated', '/api/restore-note'],
+      ['restore_note_unauthenticated', '/api/restore/notes/571efc48-7428-4740-b787-1ad8422acd37'],
     ]) {
       let status = 0;
       let isJson = false;
