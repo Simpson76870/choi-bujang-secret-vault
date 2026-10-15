@@ -105,7 +105,7 @@ function fakeDb(initialRows) {
 function response(status, body) {
   return { status, json: async () => body };
 }
-function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, rows } = {}) {
+function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, rows, policyBackupLoader } = {}) {
   const ownerId = env.RESTORE_B_OWNER_ID ?? B;
   const db = fakeDb(rows ?? [
     { id: ID, owner_id: ownerId, title: 'tampered title', content: 'tampered text' },
@@ -132,6 +132,7 @@ function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, r
       verifyLoginAuthorization: async token => token === 'Bearer test-bearer' ? identity : null,
     }),
     fetchImpl,
+    ...(policyBackupLoader ? { policyBackupLoader } : {}),
   });
   return { handler, db, calls, env };
 }
@@ -233,6 +234,28 @@ test('restore rereads through the same environment-variable contract as initial 
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.restored, true);
   assert.equal(response.payload.restore.retests.passed, true);
+});
+
+test('unverified safe-policy backup stops POST before any note database write', async () => {
+  let writes = 0;
+  const instance = harness({
+    policyBackupLoader: async () => { throw new Error('POLICY_BACKUP_INTEGRITY_FAILED'); },
+  });
+  const original = instance.db.from.bind(instance.db);
+  instance.db.from = table => {
+    const query = original(table);
+    const update = query.update.bind(query);
+    const insert = query.insert.bind(query);
+    query.update = record => { writes += 1; return update(record); };
+    query.insert = record => { writes += 1; return insert(record); };
+    return query;
+  };
+  const before = structuredClone(instance.db.rows.get(ID));
+  const result = await invoke(instance.handler, { method: 'POST' });
+  assert.equal(result.statusCode, 503);
+  assert.equal(result.payload.error, 'POLICY_BACKUP_UNVERIFIED');
+  assert.equal(writes, 0);
+  assert.deepEqual(instance.db.rows.get(ID), before);
 });
 
 test('a changed snapshot reread is rejected before the store can write', async () => {
