@@ -355,6 +355,12 @@
 
     cancelEditButton.addEventListener('click', resetEditor);
 
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        setStatus(authStatus, '오프라인 안내 기능을 등록하지 못했습니다. 온라인에서 다시 시도해 주세요.', true);
+      });
+    }
+
     try {
       const sdk = await import('https://esm.sh/@supabase/supabase-js@2.117.2');
       supabase = sdk.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
