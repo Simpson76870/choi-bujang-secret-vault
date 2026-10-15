@@ -5,10 +5,11 @@
   "allowedNew": [
     "api/ai.js",
     "api/announcements/[id].js",
+    "api/device/approval.js",
     "api/notes.js",
     "api/notes/[id].js",
     "api/notices/[id].js",
-    "api/threat-intel.js",
-    "api/restore-note.js"
+    "api/restore-note.js",
+    "api/threat-intel.js"
   ]
 }
