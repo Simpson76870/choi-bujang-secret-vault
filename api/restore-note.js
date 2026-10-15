@@ -4,7 +4,7 @@ import {
   decodeSnapshotBase64, previewNoteRestore, restoreNoteOnce, verifyNoteBackup,
 } from '../src/recovery/note.mjs';
 import { appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner, recordOperation } from '../src/recovery/ledger.mjs';
-import { loadVerifiedPolicyBackup } from '../src/restore-runtime.mjs';
+import { compareCurrentPolicyWithBackup, loadVerifiedPolicyBackup } from '../src/restore-runtime.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA = /^[a-f0-9]{64}$/u;
@@ -204,6 +204,7 @@ export function createRestoreHandler({
   runtimeLoader = getNotesRuntime,
   fetchImpl = fetch,
   policyBackupLoader = loadVerifiedPolicyBackup,
+  policyScopeComparator = compareCurrentPolicyWithBackup,
 } = {}) {
   let runtimePromise;
   return async function handler(request, response) {
@@ -360,18 +361,37 @@ export function createRestoreHandler({
         // unverifiable policy material must stop before any note write.
         await policyBackupLoader();
         recordOperation('policy_backup_sha256', { passed: true, code: 'verified' });
+        const policyScope = await policyScopeComparator();
+        recordOperation('policy_backup_scope_comparison', {
+          passed: policyScope.verified === true,
+          code: policyScope.verified === true ? 'scope_matched' : 'scope_mismatch',
+        });
+        if (policyScope.verified !== true) {
+          return send(response, 503, { error: 'POLICY_SCOPE_UNVERIFIED' });
+        }
         restored = await restoreNoteOnce({
           ...common,
           store,
           // Re-read both independent backups immediately before the database
-          // write. A policy-copy failure aborts the note restore.
+          // write, and independently repeat the live-policy scope comparison.
+          // The plan artifact is not reused as proof of this runtime check.
           rereadBackup: async () => {
             await policyBackupLoader();
             recordOperation('policy_backup_sha256', { passed: true, code: 'rechecked' });
+            const freshScope = await policyScopeComparator();
+            recordOperation('policy_backup_scope_comparison', {
+              passed: freshScope.verified === true,
+              code: freshScope.verified === true ? 'scope_matched' : 'scope_mismatch',
+            });
+            if (freshScope.verified !== true) throw new Error('POLICY_SCOPE_UNVERIFIED');
             return snapshotInputs(env);
           },
         });
       } catch (error) {
+        if (error?.message === 'POLICY_SCOPE_UNVERIFIED') {
+          recordOperation('policy_backup_scope_comparison', { passed: false, code: 'scope_mismatch' });
+          return send(response, 503, { error: 'POLICY_SCOPE_UNVERIFIED' });
+        }
         if (typeof error?.message === 'string' && error.message.startsWith('POLICY_BACKUP_')) {
           recordOperation('policy_backup_sha256', { passed: false, code: 'verification_failed' });
           return send(response, 503, { error: 'POLICY_BACKUP_UNVERIFIED' });
