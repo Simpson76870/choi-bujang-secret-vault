@@ -18,7 +18,8 @@
     "test:stage9": "node --test test/detect-stage9.test.mjs",
     "test:stage10": "node --test test/stage10.test.mjs test/recovery-note.test.mjs test/recovery-policy-step10.test.mjs",
     "restore:plan": "node scripts/restore-policy.mjs plan",
-    "restore:apply": "node scripts/restore-policy.mjs apply"
+    "restore:apply": "node scripts/restore-policy.mjs apply",
+    "test:stage12": "node --test test/stage12.test.mjs"
   },
   "engines": {
     "node": ">=22"
