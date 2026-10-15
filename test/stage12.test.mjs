@@ -27,7 +27,7 @@ test('stage 12 config and self-check support stage 12', async () => {
   assert.match(checker, /10, 11, 12\]\.includes\(config\.step\)/u);
   assert.match(checker, /function requestRecord/u);
   assert.match(checker, /caseId, requestKey, expected, observed/u);
-  assert.match(checker, /status === null/u);
+  assert.match(checker, /'not_run'/u);
 });
 
 test('README identifies the supplied engine and honest non-run scope', async () => {
