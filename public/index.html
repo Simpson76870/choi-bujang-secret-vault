@@ -168,12 +168,16 @@
         });
         const payload = await response.json().catch(() => ({}));
         if (response.ok && payload.approved === true) {
-          devicePanel.hidden = true;
-          notesPanel.hidden = false;
           setStatus(deviceStatus, '서버가 등록 기기를 확인했습니다.');
-          if (requestApproval) await loadNotes();
+          // Data access is gated by the server approval response for both initial
+          // status checks and explicit approval requests.
+          notesPanel.hidden = false;
+          await loadNotes();
         } else {
+          // Never leave previously rendered notes visible while approval is absent.
           notesPanel.hidden = true;
+          notesList.replaceChildren();
+          resetEditor();
           setStatus(deviceStatus, payload.message || '승인 대기 중입니다. 서버가 등록 기기로 확인하기 전에는 자료를 표시하지 않습니다.');
         }
       } catch {
