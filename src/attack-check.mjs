@@ -99,9 +99,7 @@ export async function runAttackChecks(config) {
   checks.push({
     attackId: 'homepage_security_header',
     expected: '첫 HTML 응답에 nosniff 또는 Content-Security-Policy가 있음',
-    observed: nosniff?.toLowerCase() === 'nosniff' || csp
-      ? '첫 HTML 응답에서 보안 헤더를 확인함'
-      : '첫 HTML 응답에서 보안 헤더를 확인하지 못함',
+    observed: 'GET / — HTTP ' + appResponse.status + '; x-content-type-options=' + (nosniff ?? '없음') + '; content-security-policy=' + (csp ? '있음' : '없음'),
   });
 
   for (const [attackId, path] of [
@@ -126,8 +124,7 @@ export async function runAttackChecks(config) {
     checks.push({
       attackId,
       expected: '인증 없는 요청은 HTTP 401/403과 JSON 오류로 거부',
-      observed: denied ? '비로그인 요청을 JSON 오류로 거부함 (HTTP ' + status + ')'
-        : '예상한 JSON 인증 거부를 확인하지 못함 (HTTP ' + status + ')',
+      observed: 'GET ' + path + ' — HTTP ' + status + '; content-type=' + (isJson ? 'application/json' : '비JSON/없음') + '; error=' + (hasError ? '있음' : '없음'),
     });
   }
 
@@ -143,8 +140,7 @@ export async function runAttackChecks(config) {
   checks.push({
     attackId: 'static_data_removed',
     expected: '공개 /data.json 경로가 404',
-    observed: staticStatus === 404 ? '/data.json은 HTTP 404를 반환함'
-      : '/data.json은 HTTP ' + staticStatus + '를 반환함',
+    observed: 'GET /data.json — HTTP ' + staticStatus,
   });
 
   let manifestStatus = 0;
@@ -167,8 +163,7 @@ export async function runAttackChecks(config) {
   checks.push({
     attackId: 'deployment_manifest',
     expected: '배포 /aleph.json이 열리고 단계 ' + config.step + '을 표시',
-    observed: manifestMatches ? '/aleph.json에 단계 ' + config.step + ' 및 배포 식별 정보가 있음'
-      : '/aleph.json 확인 실패 (HTTP ' + manifestStatus + ')',
+    observed: 'GET /aleph.json — HTTP ' + manifestStatus + '; step=' + (manifestMatches ? config.step : '확인 실패'),
   });
 
   if (config.step >= 4) {
@@ -207,7 +202,7 @@ export async function runAttackChecks(config) {
   if (config.step >= 10) {
     for (const [attackId, path] of [
       ['notes_audit_unauthenticated', '/api/notes/audit'],
-      ['restore_note_unauthenticated', '/api/restore/notes/571efc48-7428-4740-b787-1ad8422acd37'],
+      ['restore_note_unauthenticated', '/api/restore-note'],
     ]) {
       let status = 0;
       let isJson = false;
@@ -225,8 +220,7 @@ export async function runAttackChecks(config) {
       checks.push({
         attackId,
         expected: '복구와 감사 경로는 인증 없는 요청을 JSON 오류로 거부',
-        observed: denied ? (attackId === 'notes_audit_unauthenticated' ? '인증 없는 감사 요청을 JSON 오류로 거부함 (HTTP ' + status + ')' : '인증 없는 복구 요청을 JSON 오류로 거부함 (HTTP ' + status + ')')
-          : '복구 경로의 인증 거부를 확인하지 못함 (HTTP ' + status + ')',
+        observed: 'GET ' + path + ' — HTTP ' + status + '; content-type=' + (isJson ? 'application/json' : '비JSON/없음') + '; error=' + (hasError ? '있음' : '없음'),
       });
     }
   }
