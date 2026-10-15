@@ -25,9 +25,8 @@ test('stage 12 config and self-check support stage 12', async () => {
   const checker = await read('../src/attack-check.mjs');
   assert.equal(config.step, 12);
   assert.match(checker, /10, 11, 12\]\.includes\(config\.step\)/u);
-  assert.match(checker, /function requestRecord/u);
-  assert.match(checker, /caseId, requestKey, expected, observed/u);
-  assert.match(checker, /'not_run'/u);
+  assert.match(checker, /observed: 'not_run'/u);
+  assert.doesNotMatch(checker, /fetch\(/u);
 });
 
 test('README identifies the supplied engine and honest non-run scope', async () => {
