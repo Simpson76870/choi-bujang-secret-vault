@@ -26,7 +26,9 @@ test('stage 12 config and self-check support stage 12', async () => {
   assert.equal(config.step, 12);
   assert.match(checker, /10, 11, 12\]\.includes\(config\.step\)/u);
   assert.match(checker, /observed: 'not_run'/u);
-  assert.doesNotMatch(checker, /fetch\(/u);
+  assert.match(checker, /attackId: 'static_note_read',[\s\S]*?observed: 'not_run'/u);
+  assert.match(checker, /attackId: 'anonymous_list',[\s\S]*?observed: 'not_run'/u);
+  assert.match(checker, /attackId: 'anonymous_get',[\s\S]*?observed: 'not_run'/u);
 });
 
 test('README identifies the supplied engine and honest non-run scope', async () => {
