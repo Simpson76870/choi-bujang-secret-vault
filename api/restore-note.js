@@ -5,6 +5,7 @@ import {
 } from '../src/recovery/note.mjs';
 import { appendRecoveryAudit, getOperationsReport, getRecoveryAuditForOwner, recordOperation } from '../src/recovery/ledger.mjs';
 import { compareCurrentPolicyWithBackup, loadVerifiedPolicyBackup } from '../src/restore-runtime.mjs';
+import { RULE_IDS } from '../src/decider.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA = /^[a-f0-9]{64}$/u;
@@ -224,6 +225,22 @@ export function createRestoreHandler({
         ...report,
         step: config.step,
         restoreRoute: config.restoreRoute,
+        decider: {
+          status: 'measured',
+          defaultDecision: 'deny',
+          ruleIds: [...RULE_IDS],
+          source: 'src/decider.mjs',
+        },
+        detection: {
+          status: 'not_run',
+          source: 'no_runtime_event_feed',
+          note: 'Local detector fixtures are not evidence of live production events or revocation.',
+        },
+        attackSuite: {
+          expectedCases: 41,
+          status: 'not_run',
+          note: 'Only individually executed requests may be marked measured.',
+        },
         auditHistory: {
           status: report.recoveryAuditEvents > 0 ? 'measured' : 'not_run',
           entries: report.recoveryAuditEvents,
