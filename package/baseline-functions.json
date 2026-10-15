@@ -9,7 +9,7 @@
     "api/notes.js",
     "api/notes/[id].js",
     "api/notices/[id].js",
-    "api/restore-note.js",
-    "api/threat-intel.js"
+    "api/threat-intel.js",
+    "api/restore-note.js"
   ]
 }
