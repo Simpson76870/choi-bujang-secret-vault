@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { B_NOTE_BACKUP_VERSION, B_NOTE_FIXTURE_KEY, SAFE_POLICY_SOURCE_COMMIT, diffPolicy, loadVerifiedPolicyBackup, noteBackupManifestSha256, noteContentSha256, policyDigest, validateBNoteBackup, validatePolicySnapshot, validatePolicyState } from '../src/restore-runtime.mjs';
+import { B_NOTE_BACKUP_VERSION, B_NOTE_FIXTURE_KEY, SAFE_POLICY_SOURCE_COMMIT, compareCurrentPolicyWithBackup, diffPolicy, loadVerifiedPolicyBackup, noteBackupManifestSha256, noteContentSha256, policyDigest, validateBNoteBackup, validatePolicySnapshot, validatePolicyState } from '../src/restore-runtime.mjs';
+import { RECOVERY_POLICY_VIEW } from '../src/decider.mjs';
 
 const OWNER_A = '00000000-0000-4000-8000-000000000001';
 const OWNER_B = '00000000-0000-4000-8000-000000000002';
@@ -45,6 +46,22 @@ test('safe policy copy is tied to the exact pre-stage-9 source and integrity has
   const raw = await read('../backups/policies/stage9-safe-policy.json');
   assert.equal(validatePolicySnapshot(raw).backupVersion, backup.backupVersion);
   assert.throws(() => validatePolicySnapshot(raw.replace('"defaultDecision": "deny"', '"defaultDecision": "allow"')), /POLICY_BACKUP_INTEGRITY_FAILED/u);
+});
+
+test('runtime policy scope comparison verifies exact match and reports changed paths only', async () => {
+  const matched = await compareCurrentPolicyWithBackup();
+  assert.equal(matched.verified, true);
+  assert.equal(matched.changedItemCount, 0);
+  assert.match(matched.currentPolicySha256, /^[a-f0-9]{64}$/u);
+  assert.match(matched.backupPolicySha256, /^[a-f0-9]{64}$/u);
+  assert.match(matched.comparisonSha256, /^[a-f0-9]{64}$/u);
+
+  const changed = structuredClone(RECOVERY_POLICY_VIEW);
+  changed.defaultDecision = 'allow';
+  const mismatch = await compareCurrentPolicyWithBackup({ currentPolicy: changed });
+  assert.equal(mismatch.verified, false);
+  assert.deepEqual(mismatch.changedItems, [{ path: 'defaultDecision', change: 'changed' }]);
+  assert.equal(JSON.stringify(mismatch.changedItems).includes('allow'), false);
 });
 
 test('policy diff exposes only changed paths, never current policy values', async () => {
