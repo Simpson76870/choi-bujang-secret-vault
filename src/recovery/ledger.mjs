@@ -9,6 +9,7 @@ const CHECK_NAMES = Object.freeze([
   'post_restore_own_note_read',
   'post_restore_foreign_note_denial',
   'policy_backup_sha256',
+  'policy_backup_scope_comparison',
   'stages_1_to_9_regression',
 ]);
 
