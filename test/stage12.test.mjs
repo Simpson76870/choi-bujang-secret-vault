@@ -24,7 +24,10 @@ test('stage 12 config and self-check support stage 12', async () => {
   const config = JSON.parse(await read('../aleph.config.json'));
   const checker = await read('../src/attack-check.mjs');
   assert.equal(config.step, 12);
-  assert.match(checker, /10, 11, 12\]\.includes\(config\.step\)/u);\n  assert.match(checker, /function requestRecord/u);\n  assert.match(checker, /caseId, requestKey, expected, observed/u);\n  assert.match(checker, /status === null/u);
+  assert.match(checker, /10, 11, 12\]\.includes\(config\.step\)/u);
+  assert.match(checker, /function requestRecord/u);
+  assert.match(checker, /caseId, requestKey, expected, observed/u);
+  assert.match(checker, /status === null/u);
 });
 
 test('README identifies the supplied engine and honest non-run scope', async () => {
