@@ -1,4 +1,4 @@
-# BYTE BACK 방어전 시작 틀 — 11단계 저장점
+# BYTE BACK 방어전 — 12단계 저장점
 
 이 저장소는 자료 보호 실습용입니다. 화면과 데이터베이스에는 가상 학습 메모만 사용하세요. 실제 개인정보, 토큰, 비밀번호 또는 서버 전용 키를 코드·Git·로그·제출 묶음에 넣지 마세요.
 
@@ -225,3 +225,31 @@ npm run bundle
 - 브라우저의 Supabase 세션 영속 저장과 자동 갱신을 비활성화했습니다. 기기 키나 토큰을 localStorage에 저장하지 않습니다. 페이지를 새로 열면 다시 로그인해야 합니다.
 - 승인 상태를 확인할 수 없거나 서버가 승인하지 않으면 메모 패널은 숨겨집니다. 오프라인 상태에서는 보호 자료를 표시하지 않습니다.
 - 기기 승인 확인: 로그인 후 `GET /api/device/approval`이 승인되지 않으면 메모가 보이지 않아야 합니다. `POST /api/device/approval`은 미승인 사용자에게 `202 pending`을 반환하며 승인으로 처리하지 않습니다. 서버 환경에 승인된 사용자 ID가 등록된 경우에만 `200 approved`를 반환합니다.
+
+
+## 12단계 저장점: 탈환 작전실
+
+- `public/operations.html`은 실제 `GET /api/operations` 응답에서 판정기 규칙과 복구 점검 상태를 읽습니다. 화면에는 메모 본문·토큰을 표시하지 않습니다.
+- `api/restore-note.js`의 운영 현황 응답은 `src/decider.mjs`의 실제 `RULE_IDS`를 노출하고, 운영 탐지 피드가 연결되지 않은 상태와 41종 총공세가 실행되지 않은 상태를 `not_run`으로 명시합니다. 로컬 가상 탐지 테스트는 운영 탐지·회수 증거가 아닙니다.
+- 복구 체크는 실제 복구 흐름에서 기록한 `measured` 결과만 표시합니다. 프로세스 로컬 감사 이력은 영속 저장소가 아니며 인스턴스 교체 시 사라질 수 있습니다.
+- ALEPH SDP 엔진은 제공 엔진입니다. `src/decider.mjs`, `src/detect.mjs`, 접속 앱과 탈환 작전실은 이 저장소의 학생 작업입니다.
+- 실제 요청을 보내지 않은 정상/금지 조합은 통과로 표시하지 않습니다. 인증 없는 조회·타인 메모 접근·미등록 기기·서명 없는 변경·구역 밖 조회의 운영 실측은 각각 별도 인증/기기/서명/자원 증거가 있어야 하며, 이 화면만으로 이를 주장하지 않습니다.
+
+### 12단계 확인
+
+```sh
+npm ci
+npm run test:stage12
+npm run test:stage10
+npm run test:stage9
+npm run test:stage8
+npm run test:stage5
+npm run test:stage4
+npm run test:package
+npm run decider:test
+npm run detect:test
+npm run build
+npm run bundle
+```
+
+작전실: `/operations.html`. `npm run bundle`은 깨끗한 작업 트리와 실제 배포 환경이 필요합니다. 실행하지 못한 운영 요청과 41종 시험은 미실행으로 남깁니다.
