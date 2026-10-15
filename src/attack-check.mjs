@@ -86,7 +86,7 @@ export async function runAttackChecks(config) {
       requestRecord({
         attackId: 'anonymous_note_api', path: '/api/notes', status: apiStatus || null,
         expected: '연습용 API에서 가상 자료 네 건을 확인',
-        details: apiVisible ? '가상 자료 네 건 관찰' : '예상 자료 미관찰',
+        details: apiVisible ? '확인 표시와 네 건의 자료 관찰' : '예상 자료 미관찰',
       }),
       requestRecord({
         attackId: 'static_data_removed', path: '/data.json', status: staticStatus || null,
