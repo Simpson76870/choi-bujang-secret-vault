@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { RECOVERY_POLICY_VIEW } from './decider.mjs';
 
 export const SAFE_POLICY_VERSION = 'stage9-safe-policy-v1';
 export const SAFE_POLICY_SOURCE_COMMIT = 'f1dfff0d44c5c08e68fcf3e10b0075609f5e2269';
@@ -124,6 +125,32 @@ export function diffPolicy(current, restored) {
   };
   walk(current, restored, '');
   return changes.slice(0, 200);
+}
+
+// Compare the live, read-only policy projection against the independently
+// verified pre-incident snapshot. This is separate from the user-triggered
+// restore-plan artifact and never writes the operational policy.
+export async function compareCurrentPolicyWithBackup() {
+  const snapshot = await loadVerifiedPolicyBackup();
+  const currentPolicy = JSON.parse(JSON.stringify(RECOVERY_POLICY_VIEW));
+  const changedItems = diffPolicy(currentPolicy, snapshot.policy);
+  const currentPolicySha256 = policyDigest(currentPolicy);
+  const backupPolicySha256 = policyDigest(snapshot.policy);
+  const comparisonSha256 = sha256(canonicalJson({
+    backupVersion: snapshot.backupVersion,
+    currentPolicySha256,
+    backupPolicySha256,
+    changedItems,
+  }));
+  return {
+    verified: changedItems.length === 0,
+    backupVersion: snapshot.backupVersion,
+    currentPolicySha256,
+    backupPolicySha256,
+    changedItems,
+    changedItemCount: changedItems.length,
+    comparisonSha256,
+  };
 }
 
 export function noteContentSha256(content) {
