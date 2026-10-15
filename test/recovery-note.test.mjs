@@ -105,7 +105,7 @@ function fakeDb(initialRows) {
 function response(status, body) {
   return { status, json: async () => body };
 }
-function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, rows, policyBackupLoader } = {}) {
+function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, rows, policyBackupLoader, policyScopeComparator } = {}) {
   const ownerId = env.RESTORE_B_OWNER_ID ?? B;
   const db = fakeDb(rows ?? [
     { id: ID, owner_id: ownerId, title: 'tampered title', content: 'tampered text' },
@@ -133,6 +133,7 @@ function harness({ env = makeEnv(), identity = { kind: 'student', userId: B }, r
     }),
     fetchImpl,
     ...(policyBackupLoader ? { policyBackupLoader } : {}),
+    ...(policyScopeComparator ? { policyScopeComparator } : {}),
   });
   return { handler, db, calls, env };
 }
@@ -234,6 +235,32 @@ test('restore rereads through the same environment-variable contract as initial 
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.restored, true);
   assert.equal(response.payload.restore.retests.passed, true);
+});
+
+test('runtime policy scope mismatch stops POST before any note database write', async () => {
+  let writes = 0;
+  const instance = harness({
+    policyScopeComparator: async () => ({
+      verified: false,
+      changedItemCount: 1,
+      changedItems: [{ path: 'defaultDecision', change: 'changed' }],
+    }),
+  });
+  const original = instance.db.from.bind(instance.db);
+  instance.db.from = table => {
+    const query = original(table);
+    const update = query.update.bind(query);
+    const insert = query.insert.bind(query);
+    query.update = record => { writes += 1; return update(record); };
+    query.insert = record => { writes += 1; return insert(record); };
+    return query;
+  };
+  const before = structuredClone(instance.db.rows.get(ID));
+  const result = await invoke(instance.handler, { method: 'POST' });
+  assert.equal(result.statusCode, 503);
+  assert.equal(result.payload.error, 'POLICY_SCOPE_UNVERIFIED');
+  assert.equal(writes, 0);
+  assert.deepEqual(instance.db.rows.get(ID), before);
 });
 
 test('unverified safe-policy backup stops POST before any note database write', async () => {
