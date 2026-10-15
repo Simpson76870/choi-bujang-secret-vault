@@ -1,4 +1,13 @@
 // Self-check records only observations from actual HTTP requests, not judge decisions.
+function requestRecord({ attackId, expected, method = 'GET', path, status, details = '' }) {
+  const caseId = attackId;
+  const requestKey = method + ' ' + path;
+  const observed = Number.isInteger(status)
+    ? 'HTTP ' + status + (details ? '; ' + details : '')
+    : 'not_run';
+  return { attackId, caseId, requestKey, expected, observed };
+}
+
 export async function runAttackChecks(config) {
   if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) {
     throw new Error('현재 자기 점검은 1~12단계만 지원합니다.');
@@ -32,12 +41,13 @@ export async function runAttackChecks(config) {
         // A non-JSON response is a failed check, not a successful deployment.
       }
     }
-    return [{
+    return [requestRecord({
       attackId: 'anonymous_note_read',
+      path: '/data.json',
+      status: response.status,
       expected: '비로그인 화면에서 가상 메모 확인 표시 관찰',
-      observed: visible ? '비로그인 요청에서 가상 자료 확인 표시가 보임'
-        : '비로그인 요청에서 확인 표시가 보이지 않음 (HTTP ' + response.status + ')',
-    }];
+      details: visible ? '가상 메모 확인 표시 관찰' : '확인 표시 미관찰',
+    })];
   }
 
   if (config.step === 2) {
@@ -73,18 +83,15 @@ export async function runAttackChecks(config) {
       staticStatus = 0;
     }
     return [
-      {
-        attackId: 'anonymous_note_api',
+      requestRecord({
+        attackId: 'anonymous_note_api', path: '/api/notes', status: apiStatus || null,
         expected: '연습용 API에서 가상 자료 네 건을 확인',
-        observed: apiVisible ? 'API가 확인 표시와 네 건의 자료를 반환함'
-          : 'API가 예상한 가상 자료를 반환하지 않음 (HTTP ' + apiStatus + ')',
-      },
-      {
-        attackId: 'static_data_removed',
+        details: apiVisible ? '가상 자료 네 건 관찰' : '예상 자료 미관찰',
+      }),
+      requestRecord({
+        attackId: 'static_data_removed', path: '/data.json', status: staticStatus || null,
         expected: '공개 /data.json 경로가 더는 자료를 제공하지 않음',
-        observed: staticStatus === 404 ? '공개 /data.json 경로가 HTTP 404를 반환함'
-          : '공개 /data.json 경로가 HTTP ' + staticStatus + '를 반환함',
-      },
+      }),
     ];
   }
 
@@ -96,11 +103,11 @@ export async function runAttackChecks(config) {
   const csp = appResponse.headers.get('content-security-policy');
   const homeHtml = await appResponse.text().catch(() => '');
   const publishableKey = /const\s+SUPABASE_PUBLISHABLE_KEY\s*=\s*['"]([^'"]+)['"]/u.exec(homeHtml)?.[1] ?? null;
-  checks.push({
-    attackId: 'homepage_security_header',
+  checks.push(requestRecord({
+    attackId: 'homepage_security_header', path: '/', status: appResponse.status,
     expected: '첫 HTML 응답에 nosniff 또는 Content-Security-Policy가 있음',
-    observed: 'GET / — HTTP ' + appResponse.status + '; x-content-type-options=' + (nosniff ?? '없음') + '; content-security-policy=' + (csp ? '있음' : '없음'),
-  });
+    details: 'x-content-type-options=' + (nosniff ?? '없음') + '; content-security-policy=' + (csp ? '있음' : '없음'),
+  }));
 
   for (const [attackId, path] of [
     ['anonymous_notes_list', '/api/notes'],
@@ -121,11 +128,11 @@ export async function runAttackChecks(config) {
       status = 0;
     }
     const denied = [401, 403].includes(status) && isJson && hasError;
-    checks.push({
-      attackId,
+    checks.push(requestRecord({
+      attackId, path, status: status || null,
       expected: '인증 없는 요청은 HTTP 401/403과 JSON 오류로 거부',
-      observed: 'GET ' + path + ' — HTTP ' + status + '; content-type=' + (isJson ? 'application/json' : '비JSON/없음') + '; error=' + (hasError ? '있음' : '없음'),
-    });
+      details: 'content-type=' + (isJson ? 'application/json' : '비JSON/없음') + '; error=' + (hasError ? '있음' : '없음'),
+    }));
   }
 
   let staticStatus = 0;
@@ -137,11 +144,10 @@ export async function runAttackChecks(config) {
   } catch {
     staticStatus = 0;
   }
-  checks.push({
-    attackId: 'static_data_removed',
+  checks.push(requestRecord({
+    attackId: 'static_data_removed', path: '/data.json', status: staticStatus || null,
     expected: '공개 /data.json 경로가 404',
-    observed: 'GET /data.json — HTTP ' + staticStatus,
-  });
+  }));
 
   let manifestStatus = 0;
   let manifestMatches = false;
@@ -160,11 +166,11 @@ export async function runAttackChecks(config) {
   } catch {
     manifestStatus = 0;
   }
-  checks.push({
-    attackId: 'deployment_manifest',
+  checks.push(requestRecord({
+    attackId: 'deployment_manifest', path: '/aleph.json', status: manifestStatus || null,
     expected: '배포 /aleph.json이 열리고 단계 ' + config.step + '을 표시',
-    observed: 'GET /aleph.json — HTTP ' + manifestStatus + '; step=' + (manifestMatches ? config.step : '확인 실패'),
-  });
+    details: 'step=' + (manifestMatches ? config.step : '확인 실패'),
+  }));
 
   if (config.step >= 4) {
     let dataApiStatus = 0;
@@ -194,11 +200,11 @@ export async function runAttackChecks(config) {
       }
     }
     const anonDenied = [401, 403].includes(dataApiStatus);
-    checks.push({
-      attackId: 'anonymous_direct_data_api',
+    checks.push(requestRecord({
+      attackId: 'anonymous_direct_data_api', path: dataApiPath, status: dataApiStatus || null,
       expected: 'publishable/anon 키의 직접 Data API SELECT는 권한 오류로 거부',
-      observed: 'GET ' + dataApiPath + ' — HTTP ' + dataApiStatus + '; ' + (anonDenied ? 'anon 권한 거부 확인' : 'anon 권한 거부 미확인'),
-    });
+      details: anonDenied ? 'anon 권한 거부 확인' : 'anon 권한 거부 미확인',
+    }));
   }
   if (config.step >= 10) {
     for (const [attackId, path] of [
@@ -218,11 +224,11 @@ export async function runAttackChecks(config) {
         hasError = typeof payload?.error === 'string' && payload.error.length > 0;
       } catch { status = 0; }
       const denied = [401, 403].includes(status) && isJson && hasError;
-      checks.push({
-        attackId,
+      checks.push(requestRecord({
+        attackId, path, status: status || null,
         expected: '복구와 감사 경로는 인증 없는 요청을 JSON 오류로 거부',
-        observed: 'GET ' + path + ' — HTTP ' + status + '; content-type=' + (isJson ? 'application/json' : '비JSON/없음') + '; error=' + (hasError ? '있음' : '없음'),
-      });
+        details: 'content-type=' + (isJson ? 'application/json' : '비JSON/없음') + '; error=' + (hasError ? '있음' : '없음'),
+      }));
     }
   }
   return checks;
