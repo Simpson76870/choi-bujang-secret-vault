@@ -188,7 +188,10 @@ export async function restoreNoteOnce({
   // before applying, not just the copy that was used to create the preview.
   if (typeof rereadBackup !== 'function') fail('UNVERIFIED_NOTE_BACKUP');
   let fresh;
-  try { fresh = await rereadBackup(); } catch { fail('UNVERIFIED_NOTE_BACKUP'); }
+  try { fresh = await rereadBackup(); } catch (error) {
+    if (error?.message === 'POLICY_SCOPE_UNVERIFIED') fail('POLICY_SCOPE_UNVERIFIED');
+    fail('UNVERIFIED_NOTE_BACKUP');
+  }
   if (!fresh || fresh.raw !== raw || fresh.trustedSha256 !== trustedSha256
       || (snapshotSource !== undefined && fresh.snapshotSource !== snapshotSource)) {
     fail('UNVERIFIED_NOTE_BACKUP');
