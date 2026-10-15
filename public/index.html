@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#101a28">
+  <link rel="manifest" href="/manifest.webmanifest">
   <title>BYTE BACK | 로그인 자료실</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -38,7 +40,7 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 10단계 도플갱어 탐지 및 권한 회수 제안</div>
+    <div class="eyebrow">BYTE BACK · 11단계 기기 승인 자료실</div>
     <h1>로그인 자료실</h1>
     <p>Supabase Auth로 로그인한 뒤 본인 소유의 가상 메모만 조회·추가·수정·삭제할 수 있습니다. 다른 사용자의 메모 ID를 사용해도 서버에서 소유권을 확인합니다.</p>
 
@@ -56,6 +58,13 @@
         </div>
       </form>
       <p class="status" id="auth-status" role="status" aria-live="polite">Supabase 로그인 기능을 준비하고 있습니다.</p>
+    </section>
+
+    <section class="panel" id="device-panel" hidden aria-labelledby="device-heading">
+      <h2 id="device-heading">기기 승인 상태</h2>
+      <p class="muted">앱 설치 여부는 기기 승인 증거가 아닙니다. 서버가 등록 기기를 확인하기 전에는 보호 자료를 열 수 없습니다.</p>
+      <p class="status" id="device-status" role="status" aria-live="polite">기기 승인 상태를 확인해야 합니다.</p>
+      <div class="actions"><button class="primary" id="request-device" type="button">기기 승인 요청</button></div>
     </section>
 
     <section class="panel" id="notes-panel" hidden aria-labelledby="notes-heading">
@@ -90,6 +99,8 @@
     const authPanel = $('#auth-panel');
     const authStatus = $('#auth-status');
     const notesPanel = $('#notes-panel');
+    const devicePanel = $('#device-panel');
+    const deviceStatus = $('#device-status');
     const notesList = $('#notes');
     const notesStatus = $('#notes-status');
     const noteForm = $('#note-form');
@@ -129,7 +140,8 @@
       session = nextSession;
       const signedIn = Boolean(session?.access_token && session?.user?.id);
       authPanel.hidden = signedIn;
-      notesPanel.hidden = !signedIn;
+      notesPanel.hidden = true;
+      devicePanel.hidden = !signedIn;
 
       if (!signedIn) {
         notesList.replaceChildren();
@@ -139,8 +151,37 @@
       }
 
       $('#signed-in-as').textContent = session.user.email || session.user.id;
-      if (changedUser) queueMicrotask(() => loadNotes());
+      if (changedUser) queueMicrotask(() => checkDeviceApproval());
     }
+
+
+    async function checkDeviceApproval(requestApproval = false) {
+      if (!session?.access_token) return;
+      notesPanel.hidden = true;
+      devicePanel.hidden = false;
+      setStatus(deviceStatus, requestApproval ? '서버에 기기 승인 요청을 보내는 중입니다.' : '서버에서 등록 기기를 확인하는 중입니다.');
+      try {
+        const response = await fetch('/api/device/approval', {
+          method: requestApproval ? 'POST' : 'GET',
+          headers: { Authorization: 'Bearer ' + session.access_token, ...(requestApproval ? { 'Content-Type': 'application/json' } : {}) },
+          ...(requestApproval ? { body: '{}' } : {}),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && payload.approved === true) {
+          devicePanel.hidden = true;
+          notesPanel.hidden = false;
+          setStatus(deviceStatus, '서버가 등록 기기를 확인했습니다.');
+          if (requestApproval) await loadNotes();
+        } else {
+          notesPanel.hidden = true;
+          setStatus(deviceStatus, payload.message || '승인 대기 중입니다. 서버가 등록 기기로 확인하기 전에는 자료를 표시하지 않습니다.');
+        }
+      } catch {
+        notesPanel.hidden = true;
+        setStatus(deviceStatus, '서버의 기기 승인 상태를 확인할 수 없습니다. 보호 자료는 표시하지 않습니다.', true);
+      }
+    }
+    $('#request-device').addEventListener('click', () => checkDeviceApproval(true));
 
     function authHeaders() {
       if (!session?.access_token) throw new Error('로그인이 필요합니다. 다시 로그인해 주세요.');
@@ -317,7 +358,7 @@
     try {
       const sdk = await import('https://esm.sh/@supabase/supabase-js@2.117.2');
       supabase = sdk.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
       });
       supabase.auth.onAuthStateChange((_event, nextSession) => showSession(nextSession));
       const { data, error } = await supabase.auth.getSession();
