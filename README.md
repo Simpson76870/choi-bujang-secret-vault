@@ -150,7 +150,7 @@ npm run build
 
 ### 단일 B 메모 복구 계약
 
-- 복구 사본은 **Git, 현재 메모 행, DB 백업 테이블에서 가져오지 않습니다.** 실행 환경이 서버 전용 변수 `RESTORE_NOTE_SNAPSHOT_BASE64`로 주입한 사본만 사용합니다. 실제 원문 SHA-256은 `RESTORE_NOTE_BACKUP_SHA256`에 별도로 고정되어야 합니다.
+- 복구 사본은 **Git, 현재 메모 행, DB 백업 테이블에서 가져오지 않습니다.** 실행 환경이 서버 전용 변수 `RESTORE_NOTE_BACKUP_JSON`으로 주입한 JSON 사본만 사용합니다. `RESTORE_NOTE_SNAPSHOT_BASE64` 등 기존 별칭도 지원합니다. 실제 원문 SHA-256은 `RESTORE_NOTE_BACKUP_SHA256`에 별도로 고정되어야 합니다.
 - 추가 환경 설정: `RESTORE_ENABLED=1`, `RESTORE_INCIDENT_AT`, `RESTORE_B_OWNER_ID`, `RESTORE_OPERATOR_USER_ID`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`. 사후 HTTP 재시험 목적지는 `RESTORE_PUBLIC_APP_URL`로 재정의할 수 있으며 기본값은 `aleph.config.json`의 공개 배포 URL입니다. 환경 값 자체는 Git·응답·감사·번들에 기록하지 않습니다.
 - Vercel 운영 환경의 `RESTORE_*` 값은 비공개 민감 변수로만 보관합니다. 검증된 B 가상 메모 사본과 원문 체크섬은 저장소 파일·HTML·응답·감사 이력에 복사하지 않습니다. 복구 전후에는 환경 변수에서 사본을 다시 읽고 검증하며, 값이 없거나 달라지면 데이터 변경 전에 중단합니다.
 - 사본은 `src/restore-runtime.mjs`의 `validateBNoteBackup()`가 검증하는 `stage4-b-preincident-v1` 형식이어야 합니다. 고정 B ID, 출처 커밋, 가상 메모 제목·본문, 본문 SHA-256, 매니페스트 SHA-256을 확인하고, 원문 스냅샷 SHA-256과 본문 해시는 모두 `crypto.timingSafeEqual`으로 비교합니다. `verified_at`이 `RESTORE_INCIDENT_AT`보다 늦거나 같으면 중단합니다.
