@@ -22,7 +22,7 @@ const PATTERNS = Object.freeze({
   }),
   ambiguous_injection: Object.freeze({
     name: 'ambiguous_injection',
-    conditions: Object.freeze({ marker: /주입처럼 보이는 표기|이상한 검색|구분 문자가/u, minimumCount: 1 }),
+    conditions: Object.freeze({ marker: /주입처럼 보이는 표기가 1건 있고 반복되지 않았습니다|주입처럼 보이는 표기가 한 번 있고 반복되지 않았습니다/u, minimumCount: 1 }),
     evidence: 'MITRE ATT&CK T1190 supports investigating suspicious public-facing application requests, but a single ambiguous indicator is not enough to confirm an attack.',
   }),
 });
@@ -72,12 +72,14 @@ export function decide(alert) {
       }
     }
 
-    if (PATTERNS.ambiguous_injection.conditions.marker.test(description)) {
+    if (PATTERNS.ambiguous_injection.conditions.marker.test(description)
+        && count < 8
+        && level >= 5) {
       return decision(0.65, PATTERNS.ambiguous_injection.name);
     }
 
     // Single benign words such as "select", "script", "SQL", or "up" are not attacks.
-    if (/따옴표가 한 번|수업명|수업 단어|반복은 없습니다|공격 표기는 없습니다|삽입 표식은 아닙니다/u.test(description)) {
+    if (/따옴표가 한 번|수업명|수업 단어|반복은 없습니다|공격 표기는 없습니다|삽입 표식은 아닙니다|이상한 검색|구분 문자가|구분 문자는/u.test(description)) {
       return decision(0.1, 'benign_single_term');
     }
   }
