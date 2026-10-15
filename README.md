@@ -1,4 +1,4 @@
-# BYTE BACK 방어전 시작 틀 — 10단계 저장점
+# BYTE BACK 방어전 시작 틀 — 11단계 저장점
 
 이 저장소는 자료 보호 실습용입니다. 화면과 데이터베이스에는 가상 학습 메모만 사용하세요. 실제 개인정보, 토큰, 비밀번호 또는 서버 전용 키를 코드·Git·로그·제출 묶음에 넣지 마세요.
 
@@ -215,3 +215,13 @@ npm run bundle
 ```
 
 명령의 통과는 해당 로컬 테스트만 증명합니다. 실제 메모 복구 및 사후 HTTP 재시험 통과는 `POST /api/restore/notes/:id` 응답의 `restore.retests.passed === true`와 `GET /api/notes/audit`의 결과 기록으로 확인해야 합니다. 실행하지 않은 단계는 통과했다고 주장하지 않습니다.
+
+
+## 11단계 저장점: 나만의 접속 앱과 서버 기기 승인
+
+- `public/manifest.webmanifest`에 설치형 웹앱 이름, 시작 경로, 독립 실행 표시와 색상을 정의합니다. 설치 표시 자체는 기기 승인으로 간주하지 않습니다.
+- `api/device/approval.js`는 Supabase Auth로 전달된 Bearer 토큰을 서버에서 검증하고, 서버 환경 변수 `APPROVED_DEVICE_USER_IDS`에 등록된 사용자만 승인 상태로 응답합니다. 승인 요청 POST는 승인 권한을 부여하지 않고 대기 상태만 반환합니다.
+- 환경 변수 `SUPABASE_PUBLISHABLE_KEY` 또는 `SUPABASE_ANON_KEY`는 기존 Supabase 공개 키 설정을 사용합니다. `APPROVED_DEVICE_USER_IDS`는 관리자가 서버 환경에 설정해야 하며 브라우저 요청으로 변경할 수 없습니다.
+- 브라우저의 Supabase 세션 영속 저장과 자동 갱신을 비활성화했습니다. 기기 키나 토큰을 localStorage에 저장하지 않습니다. 페이지를 새로 열면 다시 로그인해야 합니다.
+- 승인 상태를 확인할 수 없거나 서버가 승인하지 않으면 메모 패널은 숨겨집니다. 오프라인 상태에서는 보호 자료를 표시하지 않습니다.
+- 기기 승인 확인: 로그인 후 `GET /api/device/approval`이 승인되지 않으면 메모가 보이지 않아야 합니다. `POST /api/device/approval`은 미승인 사용자에게 `202 pending`을 반환하며 승인으로 처리하지 않습니다. 서버 환경에 승인된 사용자 ID가 등록된 경우에만 `200 approved`를 반환합니다.
