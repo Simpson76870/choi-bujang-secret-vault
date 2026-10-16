@@ -1,0 +1,15 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "patterns": [
+    {
+      "name": "log4shell_jndi_lookup",
+      "conditions": { "ruleLevelAtLeast": 10, "mitre": "T1190", "signals": ["요청 머리글 또는 인자의 완전한 jndi 원격 조회 구문", "URL 인코딩된 동일 구문"] },
+      "evidence": "CVE-2021-44228 및 MITRE ATT&CK T1190: 공개 애플리케이션 입력의 JNDI 원격 조회 구문은 Log4Shell 악용 형태이다."
+    },
+    {
+      "name": "known_cve_scanner_trace",
+      "conditions": { "ruleLevelAtLeast": 4, "mitre": "T1190", "signals": ["CVE-2021-44228 이름", "알려진 취약점 점검 도구 흔적", "불완전한 원격 조회 흔적"] },
+      "evidence": "MITRE ATT&CK T1190: 공개 애플리케이션을 겨냥한 알려진 취약점 식별자·점검 흔적은 추가 확인이 필요한 악용 탐색 신호이다."
+    }
+  ]
+}
