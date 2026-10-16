@@ -5,7 +5,7 @@
     {
       "alertId": "pv-01",
       "action": "block",
-      "confidence": 0.97,
+      "confidence": 0.9,
       "reason": "unauthorized_admin_group_addition"
     },
     {
