@@ -1,0 +1,5 @@
+{
+  "schema": "aleph.xdr.deny.v1",
+  "scope": "local_fixture",
+  "rules": []
+}
