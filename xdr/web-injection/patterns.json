@@ -1,0 +1,20 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "patterns": [
+    {
+      "name": "sql_injection",
+      "conditions": { "repeatCountAtLeast": 8, "ruleLevelAtLeast": 10, "signals": ["SQL 구문", "데이터베이스 조회 연결", "명령 구분자 반복"] },
+      "evidence": "MITRE ATT&CK T1190: 공개 웹 애플리케이션의 입력 처리 취약점을 악용하는 SQL·명령 구문 요청은 외부 공개 앱 악용 신호이다."
+    },
+    {
+      "name": "script_injection",
+      "conditions": { "repeatCountAtLeast": 8, "ruleLevelAtLeast": 10, "signals": ["스크립트 태그", "스크립트 삽입 표기"] },
+      "evidence": "MITRE ATT&CK T1190: 공개 웹 애플리케이션 입력에 반복되는 실행 스크립트 표기는 입력 검증 취약점 악용 신호이다."
+    },
+    {
+      "name": "path_traversal",
+      "conditions": { "repeatCountAtLeast": 8, "ruleLevelAtLeast": 10, "signals": ["../ 반복", "경로 이탈", "여러 단계 거슬러 올라가기"] },
+      "evidence": "MITRE ATT&CK T1190: 공개 웹 애플리케이션의 경로 처리 취약점을 겨냥한 반복적 상위 경로 요청은 외부 공개 앱 악용 신호이다."
+    }
+  ]
+}
