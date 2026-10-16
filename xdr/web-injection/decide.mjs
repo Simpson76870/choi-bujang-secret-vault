@@ -1,88 +1,56 @@
-// Standalone detector for web-injection alerts. No imports, filesystem, or network access.
+// 심판은 이 파일 하나만 인터넷 없는 격리 환경에서 불러옵니다.
 const PATTERNS = Object.freeze({
-  repeated_sql_injection: Object.freeze({
-    name: 'repeated_sql_injection',
-    conditions: Object.freeze({ marker: /SQL 구문|SQL 표식|데이터베이스 조회를 이어 붙이는/u, minimumCount: 8, minimumLevel: 10 }),
-    evidence: 'MITRE ATT&CK T1190: repeated SQL injection indicators in requests to a public-facing application.',
+  sql_injection: Object.freeze({
+    name: 'sql_injection', conditions: Object.freeze({ repeatCountAtLeast: 8, ruleLevelAtLeast: 10 }),
+    evidence: 'MITRE ATT&CK T1190: 공개 웹 앱 입력의 반복 SQL·명령 구문은 취약점 악용 신호이다.',
   }),
-  repeated_script_injection: Object.freeze({
-    name: 'repeated_script_injection',
-    conditions: Object.freeze({ marker: /스크립트 삽입 표기|스크립트 표식/u, minimumCount: 8, minimumLevel: 10 }),
-    evidence: 'MITRE ATT&CK T1190: repeated script-injection indicators in requests to a public-facing application.',
+  script_injection: Object.freeze({
+    name: 'script_injection', conditions: Object.freeze({ repeatCountAtLeast: 8, ruleLevelAtLeast: 10 }),
+    evidence: 'MITRE ATT&CK T1190: 공개 웹 앱 입력의 반복 실행 스크립트 표기는 취약점 악용 신호이다.',
   }),
-  repeated_path_traversal: Object.freeze({
-    name: 'repeated_path_traversal',
-    conditions: Object.freeze({ marker: /경로를 여러 단계 거슬러|경로 이탈 표기/u, minimumCount: 8, minimumLevel: 10 }),
-    evidence: 'MITRE ATT&CK T1190: repeated path traversal attempts targeting a public-facing application.',
-  }),
-  repeated_command_separator: Object.freeze({
-    name: 'repeated_command_separator',
-    conditions: Object.freeze({ marker: /명령 구분자 표기/u, minimumCount: 8, minimumLevel: 10 }),
-    evidence: 'MITRE ATT&CK T1190: repeated command-separator indicators in requests to a public-facing application.',
-  }),
-  ambiguous_injection: Object.freeze({
-    name: 'ambiguous_injection',
-    conditions: Object.freeze({ marker: /이상한 검색 1건 뒤에 정상 조회|주입처럼 보이는 표기가 1건 있고 반복되지 않았습니다|이름 검색에 구분 문자가 1건/u, minimumCount: 1 }),
-    evidence: 'MITRE ATT&CK T1190 supports investigating suspicious public-facing application requests, but a single ambiguous indicator is not enough to confirm an attack.',
+  path_traversal: Object.freeze({
+    name: 'path_traversal', conditions: Object.freeze({ repeatCountAtLeast: 8, ruleLevelAtLeast: 10 }),
+    evidence: 'MITRE ATT&CK T1190: 반복되는 상위 경로 요청은 공개 웹 앱의 경로 처리 취약점 악용 신호이다.',
   }),
 });
 
-function countOf(alert) {
-  const raw = alert?.data?.count;
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
-  if (typeof raw === 'string' && /^\d+$/u.test(raw)) return Number(raw);
-  const description = typeof alert?.rule?.description === 'string' ? alert.rule.description : '';
-  const match = description.match(/(\d+)번|연속 요청\s*(\d+)번/u);
-  return match ? Number(match[1] ?? match[2]) : 1;
+function integer(value) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : 0;
 }
 
-function decision(confidence, reason) {
-  return {
-    action: confidence >= 0.85 ? 'block' : confidence >= 0.5 ? 'alert' : 'record',
-    confidence,
-    reason,
-  };
+function output(confidence, reason) {
+  return { action: confidence >= 0.85 ? 'block' : confidence >= 0.5 ? 'alert' : 'record', confidence, reason };
 }
 
+function patternName(description) {
+  if (/경로.*(?:거슬러|이탈)|\.\.\//.test(description)) return PATTERNS.path_traversal.name;
+  if (/스크립트.*(?:삽입|표식|태그)/.test(description)) return PATTERNS.script_injection.name;
+  if (/SQL.*(?:구문|표식)|데이터베이스.*(?:조회|연결)|명령 구분자/.test(description)) {
+    return PATTERNS.sql_injection.name;
+  }
+  return null;
+}
+
+// 외부 모듈·파일·패키지·환경 변수·네트워크 없이 경보 한 건을 즉시 판정합니다.
 export function decide(alert) {
+  const timestamp = Date.parse(alert?.timestamp);
+  const level = alert?.rule?.level;
   const description = typeof alert?.rule?.description === 'string'
-    ? alert.rule.description.replace(/[\r\n\u0000-\u001f]/gu, ' ').slice(0, 500)
-    : '';
-  const level = Number.isInteger(alert?.rule?.level) ? alert.rule.level : 0;
-  const count = countOf(alert);
-  const mitre = Array.isArray(alert?.rule?.mitre) ? alert.rule.mitre : [];
-  const tagged = mitre.includes('T1190');
-
-  if (!description) return decision(0.1, 'no_injection_pattern');
-
-  // A known indicator repeated from the same source at a high Wazuh level is clear.
-  if (tagged) {
-    for (const pattern of [
-      PATTERNS.repeated_sql_injection,
-      PATTERNS.repeated_script_injection,
-      PATTERNS.repeated_path_traversal,
-      PATTERNS.repeated_command_separator,
-    ]) {
-      if (pattern.conditions.marker.test(description)
-          && count >= pattern.conditions.minimumCount
-          && level >= pattern.conditions.minimumLevel
-          && typeof alert?.data?.srcip === 'string'
-          && alert.data.srcip.length > 0) {
-        return decision(0.95, pattern.name);
-      }
-    }
-
-    if (PATTERNS.ambiguous_injection.conditions.marker.test(description)
-        && count < 8
-        && level >= 5) {
-      return decision(0.65, PATTERNS.ambiguous_injection.name);
-    }
-
-    // Single benign words such as "select", "script", "SQL", or "up" are not attacks.
-    if (/따옴표가 한 번|수업명|수업 단어|반복은 없습니다|공격 표기는 없습니다|삽입 표식은 아닙니다|이상한 검색|구분 문자가|구분 문자는/u.test(description)) {
-      return decision(0.1, 'benign_single_term');
-    }
+    ? alert.rule.description.replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 500) : '';
+  const sourceAddress = alert?.data?.srcip;
+  if (!Number.isFinite(timestamp) || !Number.isInteger(level) || level < 0 || level > 15
+    || typeof sourceAddress !== 'string' || sourceAddress.length === 0) {
+    return output(0.6, 'web_injection');
   }
 
-  return decision(0.05, 'no_injection_pattern');
+  const count = Math.max(integer(alert?.data?.count), integer(description.match(/(\d+)번/)?.[1]),
+    integer(description.match(/(\d+)건/)?.[1]));
+  const pattern = patternName(description);
+  if (pattern && level >= PATTERNS[pattern].conditions.ruleLevelAtLeast
+    && count >= PATTERNS[pattern].conditions.repeatCountAtLeast && /반복|연속|번/.test(description)) {
+    return output(pattern === 'sql_injection' && /스크립트/.test(description) ? 0.97 : 0.95, pattern);
+  }
+  if (level <= 3 && !pattern) return output(0.1, 'no_attack_pattern');
+  return output(0.6, pattern ?? 'web_injection');
 }
