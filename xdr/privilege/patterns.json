@@ -1,0 +1,32 @@
+{
+  "patterns": [
+    {
+      "name": "unauthorized_admin_group_addition",
+      "conditions": [
+        "T1078 present; ordinary account added to administrators and promptly used privileged commands; level >=10"
+      ],
+      "evidence": "MITRE ATT&CK T1078 describes abuse of valid accounts; unexpected privileged-group membership is a strong account-abuse signal."
+    },
+    {
+      "name": "privilege_escalation_abuse",
+      "conditions": [
+        "T1068 present; elevated session or administrator commands from unfamiliar address; level >=10"
+      ],
+      "evidence": "MITRE ATT&CK T1068 covers exploitation for privilege escalation; high-severity elevation paired with unfamiliar activity warrants containment."
+    },
+    {
+      "name": "after_hours_privileged_activity",
+      "conditions": [
+        "activity outside expected hours plus administrator-group change or privileged command; level >=10"
+      ],
+      "evidence": "Unexpected privileged activity outside expected hours is contextual evidence, but not proof of compromise by itself."
+    },
+    {
+      "name": "ambiguous_privilege_change",
+      "conditions": [
+        "T1068 or T1078 present with partial, repeated, failed, or uncorroborated privilege action; level >=5"
+      ],
+      "evidence": "MITRE ATT&CK T1068 and T1078 cover privilege escalation and valid-account abuse; incomplete evidence should alert rather than automatically contain."
+    }
+  ]
+}

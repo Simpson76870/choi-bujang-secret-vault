@@ -1,0 +1,6 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import {readFile} from 'node:fs/promises'; import {readAlerts} from '../xdr/privilege/read-alerts.mjs'; import {decide} from '../xdr/privilege/decide.mjs';
+const fixture=JSON.parse(await readFile(new URL('../xdr/fixtures/privilege.json',import.meta.url),'utf8'));
+test('reader returns one sanitized five-field row per alert and leaves fixture unchanged',()=>{const before=JSON.stringify(fixture),rows=readAlerts(fixture);assert.equal(rows.length,fixture.alerts.length);assert.ok(rows.every(r=>Object.keys(r).length===5));assert.equal(JSON.stringify(fixture),before);});
+test('all patterns include evidence',async()=>{const p=JSON.parse(await readFile(new URL('../xdr/privilege/patterns.json',import.meta.url),'utf8')).patterns;assert.ok(p.length>=3);assert.ok(p.every(x=>x.name&&x.conditions.length&&x.evidence.length));});
+test('clear attacks block, ambiguous events alert, normal events record',()=>{const a=fixture.alerts.map(x=>decide(x).action);assert.deepEqual(a.slice(0,8),Array(8).fill('block'));assert.deepEqual(a.slice(8,16),Array(8).fill('alert'));assert.deepEqual(a.slice(16),Array(10).fill('record'));});
+test('judge module has no imports',async()=>{const s=await readFile(new URL('../xdr/privilege/decide.mjs',import.meta.url),'utf8');assert.doesNotMatch(s,/^\s*import\s/m);});

@@ -22,7 +22,8 @@
     "test:stage12": "node --test test/stage12.test.mjs",
     "test:web-injection": "node --test test/web-injection.test.mjs",
     "test:known-cve": "node --test test/known-cve.test.mjs",
-    "test:persistence": "node --test test/persistence.test.mjs"
+    "test:persistence": "node --test test/persistence.test.mjs",
+    "test:privilege": "node --test test/privilege.test.mjs"
   },
   "engines": {
     "node": ">=22"

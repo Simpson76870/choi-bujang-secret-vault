@@ -1,0 +1,167 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "privilege",
+  "decisions": [
+    {
+      "alertId": "pv-01",
+      "action": "block",
+      "confidence": 0.97,
+      "reason": "unauthorized_admin_group_addition"
+    },
+    {
+      "alertId": "pv-02",
+      "action": "block",
+      "confidence": 0.92,
+      "reason": "privilege_escalation_abuse"
+    },
+    {
+      "alertId": "pv-03",
+      "action": "block",
+      "confidence": 0.92,
+      "reason": "privilege_escalation_abuse"
+    },
+    {
+      "alertId": "pv-04",
+      "action": "block",
+      "confidence": 0.97,
+      "reason": "unauthorized_admin_group_addition"
+    },
+    {
+      "alertId": "pv-05",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "unauthorized_admin_group_addition"
+    },
+    {
+      "alertId": "pv-06",
+      "action": "block",
+      "confidence": 0.92,
+      "reason": "privilege_escalation_abuse"
+    },
+    {
+      "alertId": "pv-07",
+      "action": "block",
+      "confidence": 0.88,
+      "reason": "after_hours_privileged_activity"
+    },
+    {
+      "alertId": "pv-08",
+      "action": "block",
+      "confidence": 0.92,
+      "reason": "privilege_escalation_abuse"
+    },
+    {
+      "alertId": "pv-09",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-10",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-11",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-12",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-13",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-14",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-15",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-16",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "ambiguous_privilege_change"
+    },
+    {
+      "alertId": "pv-17",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-18",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-19",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-20",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-21",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-22",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-23",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-24",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-25",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    },
+    {
+      "alertId": "pv-26",
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
+    }
+  ],
+  "counts": {
+    "block": 8,
+    "alert": 8,
+    "record": 10
+  }
+}
