@@ -23,7 +23,8 @@
     "test:web-injection": "node --test test/web-injection.test.mjs",
     "test:known-cve": "node --test test/known-cve.test.mjs",
     "test:persistence": "node --test test/persistence.test.mjs",
-    "test:privilege": "node --test test/privilege.test.mjs"
+    "test:privilege": "node --test test/privilege.test.mjs",
+    "test:exfiltration": "node --test test/exfiltration.test.mjs"
   },
   "engines": {
     "node": ">=22"
