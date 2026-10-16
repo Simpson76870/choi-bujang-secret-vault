@@ -57,7 +57,7 @@ export function decide(alert) {
   const pattern = patternName(description, mitre);
   const groupClear = mitre.includes('T1078') && /관리자 그룹/.test(description)
     && /(?:추가|들어가|다시 관리자로)/.test(description) && !/관리자 그룹은 아닙니다/.test(description);
-  const commandClear = mitre.includes('T1068') && /(?:관리자 명령|권한 명령|관리자 권한으로 바뀨)/.test(description)
+  const commandClear = mitre.includes('T1068') && /(?:관리자 명령|권한 명령|관리자 권한으로 바뀌)/.test(description)
     && /(?:방금 관리자가|처음 보는|곧바로|다른 계정|요청 주소는 처음)/.test(description);
   const offHoursClear = (mitre.includes('T1068') || mitre.includes('T1078'))
     && /수업 시간 밖|업무처럼 보이지 않는 시각|업무 시간 밖/.test(description)
