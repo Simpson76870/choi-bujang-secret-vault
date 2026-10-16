@@ -1,0 +1,38 @@
+{
+  "patterns": [
+    {
+      "name": "unsigned_new_service_persistence",
+      "conditions": [
+        "rule.mitre contains T1543",
+        "description indicates a new or changed unsigned service",
+        "rule level >= 10"
+      ],
+      "evidence": "MITRE ATT&CK T1543 covers creating or modifying system processes, including services, to establish persistence."
+    },
+    {
+      "name": "suspicious_scheduled_task",
+      "conditions": [
+        "rule.mitre contains T1053",
+        "description indicates an unfamiliar task and an unusual or temporary executable",
+        "rule level >= 10"
+      ],
+      "evidence": "MITRE ATT&CK T1053 covers scheduled task/job execution used to maintain persistence or execute at a chosen time."
+    },
+    {
+      "name": "startup_folder_persistence",
+      "conditions": [
+        "description indicates a new or unfamiliar Startup-folder program",
+        "rule level >= 10"
+      ],
+      "evidence": "Startup-folder changes can make a program run automatically when a user signs in; this is a persistence signal, not proof by itself."
+    },
+    {
+      "name": "ambiguous_persistence_change",
+      "conditions": [
+        "T1543 or T1053 is present and the event describes an unverified service, task, or startup change",
+        "rule level >= 5"
+      ],
+      "evidence": "MITRE ATT&CK T1543 and T1053 describe service/process and scheduled-task persistence techniques; incomplete evidence warrants alerting rather than blocking."
+    }
+  ]
+}
