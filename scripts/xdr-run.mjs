@@ -55,6 +55,15 @@ export async function runXdr({ root, moduleKey, writeError = (line) => console.e
   const outDir = join(root, 'xdr', moduleKey);
   await mkdir(outDir, { recursive: true });
   await writeFile(join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  const responderPath = join(outDir, 'respond.mjs');
+  try {
+    await access(responderPath);
+    const responder = await import(pathToFileURL(responderPath).href);
+    if (typeof responder.respond !== 'function') throw new Error('respond 함수를 내보내지 않았습니다.');
+    await responder.respond(fixture, result);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
   return result;
 }
 
