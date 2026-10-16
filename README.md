@@ -263,3 +263,13 @@ npm run bundle
 - 명확한 공격은 block, 불완전한 흔적은 alert, 정상 이벤트는 record로 구분합니다. `respond.mjs`는 독립 재판정으로 검증된 block만 15분 만료 거부 규칙에 넣고 alert만 `xdr/alerts.log`에 기록합니다. 기존 ZTNA 판정기 규칙은 수정하지 않습니다.
 
 재현: `npm run test:known-cve` 및 `npm run xdr:run -- known-cve`. fixture 기대 결과는 24건 중 block 8 · alert 8 · record 8, 정상 이벤트 차단 0입니다. 로컬 가상 시험은 실제 심판 판정을 뜻하지 않습니다.
+
+
+## 보너스 xdr-06 저장점: 자료 유출 탐지
+
+- `xdr/exfiltration/read-alerts.mjs`는 fixture를 변경하지 않고 시각·출발 주소·계정·규칙 수준·설명만 추출하며 비밀처럼 보이는 값은 마스킹합니다.
+- `patterns.json`은 MITRE ATT&CK T1041/T1048 근거로 명령 통로 대량 전송, 낯선 목적지 대량 전송, 업무 시간 밖 압축 자료 전송을 정의합니다.
+- `decide.mjs`는 import/파일 I/O/네트워크 없이 경보를 판정합니다. 명확한 대량 전송은 block, 불충분한 증거는 alert, 정상 이벤트는 record입니다.
+- `respond.mjs`는 독립 재판정에서 block인 경우에만 목적지 지문 기반 15분 만료 deny 규칙을 만들고, alert는 `xdr/alerts.log`에 비민감 요약으로 기록합니다. 기존 ZTNA 규칙을 대체하지 않는 overlay입니다.
+- 재실행: `npm run test:exfiltration && npm run xdr:run -- exfiltration`
+- 정적 판정 로직으로 계산한 현재 결과: block 10, alert 10, record 10, 정상 이벤트 block 0. 실행 환경 접근 문제로 명령 자체의 실제 실행 여부는 별도 확인이 필요합니다.
