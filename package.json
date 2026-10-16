@@ -19,7 +19,8 @@
     "test:stage10": "node --test test/stage10.test.mjs test/recovery-note.test.mjs test/recovery-policy-step10.test.mjs",
     "restore:plan": "node scripts/restore-policy.mjs plan",
     "restore:apply": "node scripts/restore-policy.mjs apply",
-    "test:stage12": "node --test test/stage12.test.mjs"
+    "test:stage12": "node --test test/stage12.test.mjs",
+    "test:web-injection": "node --test test/web-injection.test.mjs"
   },
   "engines": {
     "node": ">=22"
