@@ -11,8 +11,8 @@
     {
       "alertId": "pv-02",
       "action": "block",
-      "confidence": 0.92,
-      "reason": "privilege_escalation_abuse"
+      "confidence": 0.97,
+      "reason": "unauthorized_admin_group_addition"
     },
     {
       "alertId": "pv-03",
@@ -76,9 +76,9 @@
     },
     {
       "alertId": "pv-13",
-      "action": "alert",
-      "confidence": 0.62,
-      "reason": "ambiguous_privilege_change"
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
     },
     {
       "alertId": "pv-14",
@@ -88,9 +88,9 @@
     },
     {
       "alertId": "pv-15",
-      "action": "alert",
-      "confidence": 0.62,
-      "reason": "ambiguous_privilege_change"
+      "action": "record",
+      "confidence": 0.1,
+      "reason": "no_privilege_abuse_pattern"
     },
     {
       "alertId": "pv-16",
@@ -161,7 +161,7 @@
   ],
   "counts": {
     "block": 8,
-    "alert": 8,
-    "record": 10
+    "alert": 6,
+    "record": 12
   }
 }
