@@ -9,5 +9,6 @@ respond.mjs는 독립 판정에서도 명확한 block만 15분 거부 후보로 
 거부 규칙은 출발 주소 지문, 근거 경보 번호, 패턴, 시작·만료 시각을 포함합니다.
 `createXdrDecider`는 운영 서버가 제공하는 신뢰된 subjectId→출발 주소 매핑을 사용하며 기본 판정기를 변경하지 않습니다.
 
-검사 명령은 `node --test test/web-injection.test.mjs test/xdr-run.test.mjs`입니다.
+검사 명령은 `npm run test:web-injection` 및 `npm run xdr:run -- web-injection`입니다.
+2026-10-16 확인: 회귀 테스트 5/5 통과, 경보 26건 중 block 8·alert 9·record 9, 정상 이벤트 차단 0건.
 로컬 가상 시험은 실제 운영 연결이나 심판 판정 결과를 뜻하지 않습니다.
