@@ -254,3 +254,12 @@ npm run bundle
 ```
 
 작전실: `/operations.html`. `npm run bundle`은 깨끗한 작업 트리와 실제 배포 환경이 필요합니다. 실행하지 못한 운영 요청과 41종 시험은 미실행으로 남깁니다.
+
+
+## 보너스 xdr-03: 알려진 CVE 악용 탐지
+
+- `xdr/fixtures/known-cve.json`을 읽는 `xdr/known-cve/read-alerts.mjs`는 시각·출발 주소·계정·규칙 수준·설명만 추출하고 비밀처럼 보이는 값은 가립니다. 원본 경보는 변경하지 않습니다.
+- `patterns.json`은 CVE-2021-44228 JNDI 원격 조회 구문과 MITRE ATT&CK T1190 기반의 탐색 흔적을 기록합니다. `decide.mjs`는 외부 import·파일 I/O 없이 동기 판정합니다.
+- 명확한 공격은 block, 불완전한 흔적은 alert, 정상 이벤트는 record로 구분합니다. `respond.mjs`는 독립 재판정으로 검증된 block만 15분 만료 거부 규칙에 넣고 alert만 `xdr/alerts.log`에 기록합니다. 기존 ZTNA 판정기 규칙은 수정하지 않습니다.
+
+재현: `npm run test:known-cve` 및 `npm run xdr:run -- known-cve`. fixture 기대 결과는 24건 중 block 8 · alert 8 · record 8, 정상 이벤트 차단 0입니다. 로컬 가상 시험은 실제 심판 판정을 뜻하지 않습니다.
