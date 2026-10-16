@@ -1,0 +1,78 @@
+{
+  "schema": "aleph.xdr.deny.v1",
+  "scope": "local_fixture",
+  "rules": [
+    {
+      "ruleId": "xdr.web_injection.wi_01",
+      "action": "deny",
+      "sourceKey": "cc72cb624ad19be807d9ff2ebc78813eb0702f64f47cd02e2d52ba576b7ff084",
+      "alertId": "wi-01",
+      "pattern": "sql_injection",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_02",
+      "action": "deny",
+      "sourceKey": "cc72cb624ad19be807d9ff2ebc78813eb0702f64f47cd02e2d52ba576b7ff084",
+      "alertId": "wi-02",
+      "pattern": "script_injection",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_03",
+      "action": "deny",
+      "sourceKey": "1cd210306d7d5e364372cbc135a1925d1cf393aba6794c18d128738a703f5640",
+      "alertId": "wi-03",
+      "pattern": "path_traversal",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_04",
+      "action": "deny",
+      "sourceKey": "b8794ea86b18542852d46bfc7b2bdeeb1dbf8d10a4433c5166b7bdd5250c6365",
+      "alertId": "wi-04",
+      "pattern": "sql_injection",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_05",
+      "action": "deny",
+      "sourceKey": "c0d3d86519f0f24417d788821eda7648a5f1a8c650ce5de7762388d216e56df6",
+      "alertId": "wi-05",
+      "pattern": "script_injection",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_06",
+      "action": "deny",
+      "sourceKey": "3b35e0c8c3f378d8882985a3d1d6bb8d65a9f8d278508d6086b7ac6236fd2fb0",
+      "alertId": "wi-06",
+      "pattern": "sql_injection",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_07",
+      "action": "deny",
+      "sourceKey": "f91ff5a43b36e9d8b7361e323ee61601ef547c8a14179e42527a3cb2ad8cc081",
+      "alertId": "wi-07",
+      "pattern": "path_traversal",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    },
+    {
+      "ruleId": "xdr.web_injection.wi_08",
+      "action": "deny",
+      "sourceKey": "1339971817b71c92b49d0300424f04c380c80baf993c028a79fa207e11336cc5",
+      "alertId": "wi-08",
+      "pattern": "sql_injection",
+      "startsAt": "2026-10-08T03:33:11.092Z",
+      "expiresAt": "2026-10-08T03:48:11.092Z"
+    }
+  ]
+}
