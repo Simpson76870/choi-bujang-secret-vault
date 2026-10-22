@@ -273,3 +273,21 @@ npm run bundle
 - `respond.mjs`는 독립 재판정에서 block인 경우에만 목적지 지문 기반 15분 만료 deny 규칙을 만들고, alert는 `xdr/alerts.log`에 비민감 요약으로 기록합니다. 기존 ZTNA 규칙을 대체하지 않는 overlay입니다.
 - 재실행: `npm run test:exfiltration && npm run xdr:run -- exfiltration`
 - 정적 판정 로직으로 계산한 현재 결과: block 10, alert 10, record 10, 정상 이벤트 block 0. 실행 환경 접근 문제로 명령 자체의 실제 실행 여부는 별도 확인이 필요합니다.
+
+
+## 보너스 xdr-01 저장점: 무차별 로그인 공격 탐지
+
+- `xdr/fixtures/brute-force.json`의 28개 가상 경보를 `xdr/brute-force/decide.mjs`로 판정합니다. 탐지 패턴은 MITRE ATT&CK T1110(비밀번호 무차별 대입) 및 T1110.003(password spraying) 근거로 반복 로그인 실패와 다수 계정 대상 시도를 구분합니다.
+- `decide(alert)`는 파일·네트워크 I/O 없이 한 경보당 `action`, `confidence`, `reason`을 반환합니다. 높은 신뢰도의 명확한 공격은 `block`, 불완전하거나 모호한 이벤트는 `alert`, 정상/저위험 이벤트는 `record`로 구분합니다.
+- `respond.mjs`는 각 차단 결정을 탐지기로 독립 재판정한 뒤 로컬 가상 시험용 거부 규칙만 생성합니다. 규칙에는 출발 주소 원문 대신 SHA-256 지문을 저장하고 15분 만료를 기록합니다. 경보는 비민감 요약으로 `xdr/alerts.log`에 추가됩니다.
+- 이 대응기는 실제 방화벽·인증 서버·계정을 변경하지 않습니다. 로컬 가상 fixture에 대한 시뮬레이션이며 운영 차단 증거 또는 심판 통과를 뜻하지 않습니다.
+- `xdr/brute-force/result.json`에는 현재 소스 기준으로 계산한 28개 결과가 저장되어 있습니다: block 10 · alert 9 · record 9. 결과 파일은 실행 환경에서 명령을 실제 실행한 증거로 간주하지 않습니다.
+
+재현 명령:
+
+```sh
+npm run test:brute-force
+npm run xdr:run -- brute-force
+```
+
+테스트는 탐지 결과 수, 판정기 I/O 격리, 고신뢰도 차단만 규칙으로 연결되는지, 로그에서 출발 주소 원문을 숨기는지 확인합니다. 실행 환경에 접근할 수 없는 경우 명령 실행 여부를 완료로 기록하지 말고, 실제 실행 후 테스트 결과와 `xdr/brute-force/result.json`을 다시 확인합니다.
