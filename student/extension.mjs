@@ -91,7 +91,61 @@ export function createStudentView() {
       });
       return root;
     },
-    renderDecision() { return '학생 구현 대기: 서버의 판정과 이유를 연결하세요.'; },
+    renderDecision({ status, mode, data, error, appId } = {}) {
+      const root = document.createElement('section');
+      root.setAttribute('aria-label', '업무 앱 접근 요청 결과');
+
+      const addText = (tag, value) => {
+        const node = document.createElement(tag);
+        node.textContent = String(value ?? '');
+        root.appendChild(node);
+      };
+
+      addText('h3', '업무 앱 접근 요청 결과');
+      const modeLabel = {
+        demo: '예제 자료',
+        disconnected: '연결 없음',
+        unknown: '확인 불가'
+      }[mode];
+      if (modeLabel) addText('p', '연결 상태: ' + modeLabel);
+
+      if (status === 'idle') {
+        addText('p', '업무 앱을 선택한 뒤 접근을 요청하세요.');
+      } else if (status === 'loading') {
+        addText('p', '접근 판정 확인 중');
+      } else if (status === 'error') {
+        addText('p', '요청 실패: ' + String(error?.message ?? '오류 내용을 확인할 수 없습니다.'));
+        addText('p', '접근 거부 판정이 아니라 요청 처리 실패입니다.');
+      } else if (status === 'ok') {
+        const selectedAppId = data?.appId ?? appId;
+        addText('p', '업무 앱 ID: ' + String(selectedAppId ?? '확인 불가'));
+
+        const labels = {
+          allow: '접근 허용',
+          deny: '접근 거부',
+          challenge: '추가 확인 필요',
+          unknown: '확인 불가'
+        };
+        const rawDecision = data?.decision;
+        const known = typeof rawDecision === 'string' &&
+          Object.prototype.hasOwnProperty.call(labels, rawDecision);
+        const decision = known ? rawDecision : 'unknown';
+        addText('p', '접근 판정: ' + labels[decision] + '(' + decision + ')');
+        if (decision === 'challenge') {
+          addText('p', '추가 인증 또는 확인이 필요합니다. 이 화면은 확인 절차를 대신 수행하지 않습니다.');
+        } else if (decision === 'allow') {
+          addText('p', '정책상 접근 허용 판정이며, 실제 앱 접속 성공을 보장하지 않습니다.');
+        } else if (decision === 'unknown') {
+          addText('p', '접근 허용 여부를 확인할 수 없습니다.');
+        }
+        addText('p', '판정 이유: ' + String(data?.reason ?? '확인 불가'));
+        addText('p', '판정 시각: ' + String(data?.checkedAt ?? '확인 불가'));
+      } else {
+        addText('p', '접근 요청 상태 확인 불가');
+      }
+
+      return root;
+    },
     renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
