@@ -549,32 +549,176 @@ export function createStudentView() {
     renderExplanation({ event, explanation, checkedAt } = {}) {
       const root = document.createElement('section');
       root.setAttribute('aria-label', '보안 사건 AI 설명');
-      const heading = document.createElement('h3');
-      heading.textContent = '보안 사건 AI 설명';
-      root.appendChild(heading);
-      const add = text => {
-        const node = document.createElement('p');
-        node.textContent = String(text);
-        root.appendChild(node);
+
+      const add = (parent, tag, value) => {
+        const node = document.createElement(tag);
+        node.textContent = String(value ?? '');
+        parent.appendChild(node);
+        return node;
       };
-      if (!event || event.id == null) {
-        add('설명할 보안 기록을 선택하세요.');
-      } else if (explanation?.status === 'loading') {
-        add('사건 설명 요청 중');
-      } else if (explanation?.status === 'error') {
-        const errorCode = explanation?.error?.code ?? '확인 불가';
-        const errorMessage = explanation?.error?.message ?? '확인 불가';
-        add('사건 설명 요청 실패');
-        add('오류 코드: ' + String(errorCode));
-        add('오류 메시지: ' + String(errorMessage));
-        add('원본 기록은 그대로 유지됩니다.');
-      } else if (explanation?.status === 'ok') {
-        root.setAttribute('data-student-explanation-event', String(event.id));
-        add('사건 ID: ' + String(event.id));
-        add('AI 설명 요약: ' + String(explanation?.data?.summary ?? '확인 불가'));
-      } else {
-        add('사건 설명 요청 전');
+      const safeError = value => {
+        if (value == null || value === '') return '확인 불가';
+        return String(value)
+          .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[민감정보 생략]')
+          .replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [민감정보 생략]')
+          .replace(/((?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|secret)\s*[:=]\s*)\S+/gi, '$1[민감정보 생략]');
+      };
+      const failure = (message, unusable = false) => {
+        root.setAttribute('data-student-explanation-error', 'true');
+        if (unusable) {
+          root.setAttribute('data-student-unusable-explanation', 'true');
+          add(root, 'p', '쓸 수 없는 설명(unusable): ' + message);
+        } else {
+          add(root, 'p', 'AI 설명 실패: ' + message);
+        }
+        if (explanation?.error?.code != null) {
+          add(root, 'p', '오류 코드: ' + safeError(explanation.error.code));
+        }
+        if (explanation?.error?.message != null) {
+          add(root, 'p', '오류 메시지: ' + safeError(explanation.error.message));
+        }
+        add(root, 'p', '원본 기록은 그대로 유지됩니다.');
+        return root;
+      };
+
+      add(root, 'h3', 'AI 설명(참고용)');
+
+      // 오류를 먼저 처리해야 event가 null이어도 실패 원인이 사라지지 않는다.
+      if (explanation?.status === 'error') {
+        return failure('요청에 실패했습니다.');
       }
+      if (!event || event.id == null) {
+        add(root, 'p', '보안 기록에서 기록을 먼저 고르세요.');
+        return root;
+      }
+      if (explanation?.status === 'loading') {
+        add(root, 'p', 'AI 설명 요청 중');
+        return root;
+      }
+      if (explanation?.status !== 'ok') {
+        add(root, 'p', 'AI 설명 요청 전 또는 상태 확인 불가');
+        return root;
+      }
+
+      const data = explanation.data;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return failure('AI 설명 데이터 형식이 올바르지 않습니다.', true);
+      }
+      if (typeof data.summary !== 'string' || !data.summary.trim()) {
+        return failure('AI 설명 요약이 없습니다.', true);
+      }
+      if (!Array.isArray(data.evidenceIds) || data.evidenceIds.length === 0) {
+        return failure('인용된 근거 ID가 없어 설명을 확인할 수 없습니다.', true);
+      }
+      if (!Array.isArray(event.evidence) || event.evidence.length === 0) {
+        return failure('선택한 기록에 대조할 근거가 없습니다.', true);
+      }
+      if (!Array.isArray(data.proposals)) {
+        return failure('제안 자료의 형식을 확인할 수 없습니다.', true);
+      }
+      if (data.executed !== false) {
+        return failure('실행되지 않았다는 조건을 확인할 수 없습니다. 실행된 설명은 사용할 수 없습니다.', true);
+      }
+      if (data.requiresHumanConfirmation !== true) {
+        return failure('사람 확인이 필요하다는 조건을 확인할 수 없습니다.', true);
+      }
+
+      const evidenceById = new Map();
+      for (const evidence of event.evidence) {
+        if (!evidence || evidence.id == null || evidenceById.has(String(evidence.id))) {
+          return failure('선택한 기록의 근거 ID가 누락되었거나 중복되었습니다.', true);
+        }
+        evidenceById.set(String(evidence.id), evidence);
+      }
+      const cited = new Set();
+      for (const id of data.evidenceIds) {
+        const key = String(id);
+        if (cited.has(key)) {
+          return failure('중복 인용된 근거 ID가 있어 설명을 사용할 수 없습니다: ' + key, true);
+        }
+        if (!evidenceById.has(key)) {
+          return failure('선택한 기록에 없는 근거 ID를 인용했습니다: ' + key, true);
+        }
+        cited.add(key);
+      }
+      if (cited.size !== evidenceById.size) {
+        return failure('선택한 기록의 근거 ID 일부가 인용되지 않았습니다.', true);
+      }
+
+      const supportedActions = Array.isArray(event.supportedActions) ? event.supportedActions : [];
+      const supportedNames = new Set(supportedActions.map(item =>
+        String(typeof item === 'string' ? item : item?.action ?? item?.id ?? '')
+      ));
+      for (const proposal of data.proposals) {
+        if (!proposal || typeof proposal.action !== 'string' ||
+            !supportedNames.has(proposal.action)) {
+          return failure('선택한 기록에서 지원하지 않는 조치가 제안되었습니다.', true);
+        }
+        if (typeof proposal.reason !== 'string' || !proposal.reason.trim()) {
+          return failure('제안 이유를 확인할 수 없습니다.', true);
+        }
+        if (!Array.isArray(proposal.evidenceIds) ||
+            proposal.evidenceIds.some(id => !cited.has(String(id)))) {
+          return failure('제안의 근거 ID가 선택한 기록과 맞지 않습니다.', true);
+        }
+      }
+
+      // 모든 조건을 확인한 뒤에만 성공한 설명의 표식을 붙인다.
+      root.setAttribute('data-student-explanation-event', String(event.id));
+      add(root, 'p', '사건 ID: ' + String(event.id));
+      add(root, 'p', 'AI 요약(참고용): ' + data.summary);
+      if (checkedAt != null) add(root, 'p', '설명 확인 시각: ' + String(checkedAt));
+
+      add(root, 'h4', '인용 근거');
+      const evidenceList = document.createElement('ul');
+      for (const id of data.evidenceIds) {
+        const evidence = evidenceById.get(String(id));
+        add(evidenceList, 'li', String(id) + ' — ' + String(evidence.text ?? '확인 불가'));
+      }
+      root.appendChild(evidenceList);
+
+      add(root, 'h4', '적용 규칙');
+      if (Array.isArray(event.rules) && event.rules.length > 0) {
+        const ruleList = document.createElement('ul');
+        for (const rule of event.rules) {
+          add(ruleList, 'li', String(rule?.id ?? '확인 불가') +
+            ' — ' + String(rule?.text ?? '확인 불가'));
+        }
+        root.appendChild(ruleList);
+      } else {
+        add(root, 'p', '표시할 규칙이 없습니다.');
+      }
+
+      add(root, 'h4', '확인 불가 상태');
+      const unknownStates = [
+        ['접속', event.state?.access],
+        ['세션', event.state?.session],
+        ['기기', event.state?.device]
+      ].filter(([, value]) => value == null || value === 'unknown');
+      if (unknownStates.length === 0) {
+        add(root, 'p', '없음');
+      } else {
+        for (const [name] of unknownStates) {
+          add(root, 'p', name + ': 확인 불가(unknown)');
+        }
+      }
+
+      add(root, 'h4', 'AI 조치 제안');
+      if (data.proposals.length === 0) {
+        add(root, 'p', supportedActions.length === 0
+          ? '연동 시스템이 지원하는 조치가 없어 제안이 없습니다(정상).'
+          : 'AI가 제안한 조치가 없습니다.');
+      } else {
+        const proposalsList = document.createElement('ul');
+        for (const proposal of data.proposals) {
+          add(proposalsList, 'li', '조치: ' + proposal.action +
+            ' / 이유: ' + proposal.reason +
+            ' / 근거 ID: ' + proposal.evidenceIds.map(String).join(', ') +
+            ' / 사람 확인이 필요하며 실행되지 않았습니다.');
+        }
+        root.appendChild(proposalsList);
+      }
+      add(root, 'p', 'AI 설명과 제안은 참고용이며, 어떤 보안 조치도 실행되지 않았습니다.');
       return root;
     },
     renderAction() { return '학생 구현 대기: 현재 사건·조치·실제 대상·사람 확인·ACK와 원천 효과·unknown을 구분하세요.'; },
