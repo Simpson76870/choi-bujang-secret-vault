@@ -439,7 +439,7 @@ export function createStudentView() {
         const lines = diagnostics?.status === 'ok'
           ? safeFields.map(([key, value]) => key + ': ' + value)
           : ['진단 상태: ' + safeText(diagnostics?.status)];
-        const copyText = lines.join('\\n');
+        const copyText = lines.join('\n');
         if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(copyText).then(
             () => { feedback.textContent = '도움정보를 복사했습니다.'; },
