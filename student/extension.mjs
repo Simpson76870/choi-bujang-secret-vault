@@ -484,10 +484,7 @@ export function createStudentView() {
         add('p', '점검 결과: ' + authText);
         add('p', '사용 가능 모델 수: ' + safe(data?.modelCount));
         add('p', '점검 시각: ' + safe(checkedAt));
-        add('p', '연결만 점검했습니다. 이 결과만으로 사건 설명 실행 성공을 확인할 수 없습니다.');
-        if (explanationAccepted !== true) {
-          add('p', '사건 설명은 아직 실행하지 않았습니다.');
-        }
+        add('p', '연결만 점검했습니다. 사건 설명은 아직 실행하지 않았습니다.');
       } else if (status === 'error') {
         const code = safe(error?.code);
         const message = safe(error?.message);
