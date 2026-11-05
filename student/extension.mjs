@@ -455,8 +455,94 @@ export function createStudentView() {
       return root;
     },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
-    renderAiConnection() { return '학생 구현 대기: 모델 응답 점검과 실제 사건 설명을 구분하고 AI 오류·취소·수동 복구를 안내하세요.'; },
-    renderExplanation() { return '학생 구현 대기: 선택한 사건의 근거·규칙·현재 상태와 AI 설명을 연결하세요. 제안은 자동 실행하지 않습니다.'; },
+    renderAiConnection({ status, mode, data, error, checkedAt, explanationAccepted } = {}) {
+      const root = document.createElement('section');
+      root.setAttribute('aria-label', '앱 내부 AI 연결 상태');
+      const add = (tag, value) => {
+        const node = document.createElement(tag);
+        node.textContent = String(value ?? '');
+        root.appendChild(node);
+      };
+      const safe = value => value == null || value === '' ? '확인 불가' : String(value);
+      add('h3', 'AI 연결 점검');
+      const modeLabels = { demo: '예제 자료', disconnected: '연결 없음', unknown: '확인 불가' };
+      if (Object.prototype.hasOwnProperty.call(modeLabels, mode)) {
+        add('p', '연결 모드: ' + modeLabels[mode]);
+      }
+      if (status === 'idle') {
+        add('p', 'AI 연결 점검 전');
+        add('p', '계정 연결 및 앱 권한 확인 후 현재 API 연결 점검 버튼을 직접 누르세요.');
+      } else if (status === 'loading') {
+        add('p', 'AI 연결 점검 중');
+        add('p', '사건 설명은 아직 실행하지 않았습니다.');
+      } else if (status === 'ok') {
+        const auth = data?.audienceAuthorization;
+        const authText = auth === 'test' ? '시험 연결 점검(test)'
+          : auth === 'verified' ? '앱 권한 확인 후 점검(verified)'
+          : '권한 확인 불가(unknown)';
+        add('p', '점검 결과: ' + authText);
+        add('p', '사용 가능 모델 수: ' + safe(data?.modelCount));
+        add('p', '점검 시각: ' + safe(checkedAt));
+        add('p', '연결만 점검했습니다. 사건 설명은 아직 실행하지 않았습니다.');
+      } else if (status === 'error') {
+        const code = safe(error?.code);
+        const message = safe(error?.message);
+        const key = code.toUpperCase();
+        let guide = '담당자에게 계정 연결과 앱 권한을 확인해 달라고 요청하세요.';
+        if (/CANCEL|ABORT/.test(key)) {
+          guide = '점검이 취소되었습니다. 이전 점검 결과는 현재 결과가 아닙니다.';
+        } else if (/NO_MODEL|MODEL_UNAVAILABLE|MODEL_NOT_FOUND|MODELS_EMPTY/.test(key)) {
+          guide = '사용 가능한 모델이 없습니다. 담당자에게 모델 허용 설정을 확인해 달라고 요청하세요.';
+        } else if (/TIME_WINDOW|OUTSIDE_HOURS|NOT_IN_TIME|SCHEDULE/.test(key)) {
+          guide = '이용 가능 시간이 아닙니다. 이용 시간을 확인하세요.';
+        } else if (/QUOTA|BUDGET|LIMIT_EXCEEDED|USAGE|CREDIT/.test(key)) {
+          guide = '반 사용량 또는 이용 한도에 도달했습니다. 담당자에게 확인하세요.';
+        } else if (/RATE|TOO_MANY|TIMEOUT|TIMED_OUT|NETWORK|FETCH|ECONN|UNAVAILABLE/.test(key)) {
+          guide = '요청 제한, 시간 초과 또는 네트워크 문제입니다. 잠시 뒤 직접 다시 점검하세요.';
+        } else if (/AUTH|UNAUTHORIZED|TOKEN|LOGIN|401/.test(key)) {
+          guide = '인증 실패입니다. 계정 연결을 다시 확인하고 담당자에게 문의하세요.';
+        } else if (/FORBIDDEN|DENIED|ACCESS|PERMISSION|403/.test(key)) {
+          guide = '접근이 제한되었습니다. 계정 연결과 앱 권한을 담당자에게 확인하세요.';
+        } else if (/PENDING|PROVISION|NOT_READY|UNKNOWN/.test(key)) {
+          guide = '계정 또는 앱 권한 준비 중이거나 확인 불가입니다. 담당자에게 연결 상태를 확인하세요.';
+        }
+        add('p', 'AI 연결 점검 실패');
+        add('p', '오류 코드: ' + code);
+        add('p', '오류 메시지: ' + message);
+        add('p', guide);
+        add('p', '다시 점검하려면 현재 API 연결 점검 버튼을 직접 누르세요.');
+      } else {
+        add('p', 'AI 연결 점검 상태 확인 불가');
+      }
+      return root;
+    },
+    renderExplanation({ event, explanation, checkedAt } = {}) {
+      const root = document.createElement('section');
+      root.setAttribute('aria-label', '보안 사건 AI 설명');
+      const add = (tag, value) => {
+        const node = document.createElement(tag);
+        node.textContent = String(value ?? '');
+        root.appendChild(node);
+      };
+      add('h3', '보안 사건 AI 설명');
+      if (!event) {
+        add('p', '설명할 보안 기록을 선택하세요.');
+      } else if (explanation?.status === 'loading') {
+        add('p', '사건 설명 요청 중');
+      } else if (explanation?.status === 'error') {
+        add('p', '사건 설명 요청 실패');
+        add('p', '오류 코드: ' + String(explanation?.error?.code ?? '확인 불가'));
+        add('p', '오류 메시지: ' + String(explanation?.error?.message ?? '확인 불가'));
+        add('p', '기록은 그대로 유지됩니다.');
+      } else if (explanation?.status === 'ok') {
+        root.setAttribute('data-student-explanation-event', String(event.id ?? ''));
+        add('p', '사건 ID: ' + String(event.id ?? '확인 불가'));
+        add('p', 'AI 설명 요약: ' + String(explanation?.data?.summary ?? '확인 불가'));
+      } else {
+        add('p', '사건 설명 요청 전');
+      }
+      return root;
+    },
     renderAction() { return '학생 구현 대기: 현재 사건·조치·실제 대상·사람 확인·ACK와 원천 효과·unknown을 구분하세요.'; },
   };
 }
