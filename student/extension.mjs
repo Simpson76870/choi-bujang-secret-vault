@@ -455,102 +455,94 @@ export function createStudentView() {
       return root;
     },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
-    renderAiConnection({ status, mode, data, error, checkedAt, explanationAccepted = false } = {}) {
+    renderAiConnection(input = {}) {
+      const { status, mode, data, error, checkedAt, explanationAccepted = false } = input;
       const root = document.createElement('section');
       root.setAttribute('aria-label', '앱 내부 AI 연결 상태');
-      const add = (text) => {
-        const paragraph = document.createElement('p');
-        paragraph.textContent = text;
-        root.appendChild(paragraph);
-        return paragraph;
+      const add = (tag, text) => {
+        const node = document.createElement(tag);
+        node.textContent = String(text);
+        root.appendChild(node);
+        return node;
       };
-      const heading = document.createElement('h3');
-      heading.textContent = 'AI 연결 점검';
-      root.appendChild(heading);
-
-      const modeLabel = {
-        demo: '예제 자료',
-        disconnected: '연결 없음',
-        unknown: '확인 불가'
-      };
-      if (Object.prototype.hasOwnProperty.call(modeLabel, mode)) {
-        add('연결 모드: ' + modeLabel[mode]);
-      }
-
-      // 공식 입력의 code/message는 비밀이 제거된 진단값이다.
-      // 혹시 전달된 값에 일반적인 열쇠 형식이 섞여도 표시하지 않는다.
       const safe = value => {
-        if (value == null || value === '') return '확인 불가';
+        if (value === null || value === undefined || value === '') return '확인 불가';
         return String(value)
           .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[민감정보 생략]')
-          .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+/gi, '$1[민감정보 생략]')
-          .replace(/((?:api[_ -]?key|token|password|secret)\s*[:=]\s*)\S+/gi, '$1[민감정보 생략]');
+          .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+\b/gi, 'Bearer [민감정보 생략]')
+          .replace(/((?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|secret)\s*[:=]\s*)\S+/gi, '$1[민감정보 생략]');
       };
+      add('h3', 'AI 연결 점검');
+
+      const modes = { demo: '예제 자료', disconnected: '연결 없음', unknown: '확인 불가' };
+      if (Object.prototype.hasOwnProperty.call(modes, mode)) {
+        add('p', '연결 모드: ' + modes[mode]);
+      }
 
       if (status === 'idle') {
-        add('AI 연결 점검 전');
-        add('계정 및 앱 권한 연결을 확인한 후, 현재 API 연결 점검 버튼을 직접 누르세요.');
+        add('p', 'AI 연결 점검 전');
+        add('p', '계정 연결과 앱 권한을 확인한 뒤 현재 API 연결 점검 버튼을 직접 누르세요.');
       } else if (status === 'loading') {
-        add('AI 연결 점검 중');
-        add('사건 설명은 아직 실행하지 않았습니다.');
+        add('p', 'AI 연결 점검 중');
+        add('p', '사건 설명은 아직 실행하지 않았습니다.');
       } else if (status === 'ok') {
-        const transportChecked = data?.transportChecked === true;
-        add('전송 점검(transportChecked): ' +
-          (transportChecked ? '확인됨(true)' : '확인 불가'));
+        // 공식 화면은 data.modelCount, 통과 해설은 최상위 modelCount를 사용한다.
+        // 어느 쪽이 와도 받은 값만 표시하고, 연결 여부를 추측하지 않는다.
+        const modelCount = data?.modelCount ?? input.modelCount;
+        add('p', '사용 가능 모델 수: ' + safe(modelCount));
+        const transportChecked = data?.transportChecked;
+        if (transportChecked === true) {
+          add('p', 'AI 전송 점검 확인(transportChecked: true)');
+        } else if (transportChecked === false) {
+          add('p', 'AI 전송 점검 미확인(transportChecked: false)');
+        } else {
+          add('p', 'AI 전송 점검 확인 불가');
+        }
+
         const authorization = data?.audienceAuthorization;
         if (authorization === 'test') {
-          add('권한 점검: 시험 연결 점검(test)');
+          add('p', '시험 연결 점검(test)');
         } else if (authorization === 'verified') {
-          add('권한 점검: 앱 권한 확인 후 점검(verified)');
+          add('p', '앱 권한 확인 후 점검(verified)');
         } else {
-          add('권한 점검: 확인 불가(unknown)');
+          add('p', '앱 권한 상태 확인 불가(unknown)');
         }
-        const count = Number.isInteger(data?.modelCount) && data.modelCount >= 0
-          ? String(data.modelCount) : '확인 불가';
-        add('사용 가능 모델 수: ' + count);
-        if (count === '0') {
-          add('현재 사용할 수 있는 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.');
+
+        add('p', '점검 시각: ' + safe(checkedAt));
+        add('p', '연결만 점검했습니다. 사건 설명은 아직 실행하지 않았습니다.');
+        if (transportChecked === false) {
+          add('p', 'AI 전송이 확인되지 않았으므로 연결 성공으로 판단하지 마세요.');
         }
-        if (!transportChecked) {
-          add('전송 점검 확인이 없어 AI 연결 성공을 확정할 수 없습니다.');
+        if (modelCount === 0 || modelCount === '0') {
+          add('p', '사용 가능한 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.');
         }
-        add('점검 시각: ' + safe(checkedAt));
-        add('연결만 점검했습니다. 모델 목록 응답은 사건 설명 실행 결과가 아닙니다.');
         if (explanationAccepted === true) {
-          add('사건 설명 요청 수락 여부만 확인됐습니다. 실제 설명 결과는 보안 기록에서 별도로 확인해야 합니다.');
-        } else {
-          add('사건 설명은 아직 실행하지 않았습니다.');
+          add('p', '사건 설명 요청 수락 정보가 전달됐지만 실제 설명 결과는 보안 기록에서 별도로 확인해야 합니다.');
         }
       } else if (status === 'error') {
         const code = safe(error?.code);
         const message = safe(error?.message);
-        const upper = code.toUpperCase();
-        let guidance = '계정 연결 및 앱 권한을 담당자에게 확인해 달라고 요청하세요.';
-        if (/CANCEL|ABORT/.test(upper)) {
-          guidance = '점검이 취소되었습니다. 이전 점검 결과는 현재 결과가 아닙니다.';
-        } else if (/NO_MODEL|MODEL_NOT_FOUND|MODEL_UNAVAILABLE|MODEL_NOT_ALLOWED|MODELS_EMPTY/.test(upper)) {
-          guidance = '사용 가능한 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.';
-        } else if (/OUTSIDE_HOURS|TIME_WINDOW|OPERATING_HOURS|TIME_RESTRICTED|SCHEDULE/.test(upper)) {
-          guidance = '이용 가능한 시간이 아닙니다. 이용 시간을 확인하세요.';
-        } else if (/QUOTA|BUDGET|USAGE|CREDIT|LIMIT_EXCEEDED|CLASS_LIMIT/.test(upper)) {
-          guidance = '반 사용량 또는 이용 한도에 도달했습니다. 담당자에게 확인하세요.';
-        } else if (/RATE_LIMIT|TOO_MANY|THROTTLE|TIMEOUT|TIMED_OUT|NETWORK|FETCH|ECONN/.test(upper)) {
-          guidance = '요청 제한, 시간 초과 또는 네트워크 오류입니다. 잠시 후 직접 다시 점검하세요.';
-        } else if (/UNAUTHORIZED|AUTHENTICATION|AUTH_FAILED|TOKEN|LOGIN|401/.test(upper)) {
-          guidance = '인증에 실패했습니다. 계정 연결을 다시 확인하고 담당자에게 문의하세요.';
-        } else if (/FORBIDDEN|DENIED|ACCESS|PERMISSION|AUTHORIZATION|403/.test(upper)) {
-          guidance = '접근이 제한되었습니다. 담당자에게 앱 권한을 확인해 달라고 요청하세요.';
-        } else if (/PENDING|PROVISION|NOT_READY|UNKNOWN|NOT_CONFIGURED/.test(upper)) {
-          guidance = '권한 준비 중이거나 연결 상태를 확인할 수 없습니다. 담당자에게 확인을 요청하세요.';
-        }
-        add('AI 연결 점검 실패');
-        add('오류 코드: ' + code);
-        add('오류 메시지: ' + message);
-        add(guidance);
-        add('이전 연결 점검 결과로 사건 설명 성공을 판단하지 마세요.');
-        add('다시 점검하려면 현재 API 연결 점검 버튼을 직접 누르세요.');
+        const category = code.toUpperCase();
+        const AI_GUIDE = [
+          [/CANCEL|ABORT|ABORTED|CANCELED|CANCELLED/, '점검이 취소되었습니다. 이전 점검 결과는 현재 결과가 아닙니다.'],
+          [/TIMEOUT|TIMED_OUT|DEADLINE|ETIMEDOUT|REQUEST_EXPIRED/, '시간 초과로 AI 연결 점검을 마치지 못했습니다. 잠시 뒤 직접 다시 점검하세요.'],
+          [/RATE|THROTTLE|TOO_MANY|429/, '요청 제한 상태입니다. 잠시 뒤 직접 다시 점검하세요.'],
+          [/NETWORK|FETCH|ECONN|ENOTFOUND|DNS|UNREACHABLE|GATEWAY_ERROR/, '네트워크 또는 전송 오류입니다. 잠시 뒤 직접 다시 점검하세요.'],
+          [/NO_MODEL|MODEL_UNAVAILABLE|MODEL_NOT_FOUND|MODEL_NOT_ALLOWED|MODELS_EMPTY|NO_AVAILABLE_MODEL/, '사용 가능한 모델이 없습니다. 담당자에게 모델 허용 설정을 확인하세요.'],
+          [/OUTSIDE_HOURS|TIME_WINDOW|OPERATING_HOURS|TIME_RESTRICTED|SCHEDULE|CLASS_HOURS/, '현재 이용 가능한 시간이 아닙니다. 이용 시간을 확인하세요.'],
+          [/QUOTA|BUDGET|USAGE|CREDIT|LIMIT_EXCEEDED|CLASS_LIMIT|ALLOWANCE/, '반 사용량 또는 이용 한도에 도달했습니다. 담당자에게 확인하세요.'],
+          [/PROVISION|PENDING|NOT_READY|NOT_CONFIGURED/, '계정 또는 앱 권한 준비 중입니다. 담당자에게 연결 상태를 확인하세요.'],
+          [/AUTHENTICATION|UNAUTHORIZED|AUTH_FAILED|INVALID_TOKEN|TOKEN_EXPIRED|LOGIN|401/, '인증 실패입니다. 계정 연결을 다시 확인하고 담당자에게 문의하세요.'],
+          [/FORBIDDEN|DENIED|ACCESS|PERMISSION|AUTHORIZATION|403/, '앱 접근 권한이 제한되었습니다. 담당자에게 앱 권한을 확인하세요.']
+        ];
+        const match = AI_GUIDE.find(([pattern]) => pattern.test(category));
+        add('p', 'AI 연결 점검 실패');
+        add('p', '오류 코드: ' + code);
+        add('p', '오류 메시지: ' + message);
+        add('p', match ? match[1] : '연결 상태를 확인할 수 없습니다. 담당자에게 계정 연결과 앱 권한을 확인하세요.');
+        add('p', '다시 점검하려면 현재 API 연결 점검 버튼을 직접 누르세요.');
       } else {
-        add('AI 연결 점검 상태 확인 불가');
+        add('p', 'AI 연결 점검 상태 확인 불가');
       }
       return root;
     },
