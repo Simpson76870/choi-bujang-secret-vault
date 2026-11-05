@@ -721,6 +721,141 @@ export function createStudentView() {
       add(root, 'p', 'AI 설명과 제안은 참고용이며, 어떤 보안 조치도 실행되지 않았습니다.');
       return root;
     },
-    renderAction() { return '학생 구현 대기: 현재 사건·조치·실제 대상·사람 확인·ACK와 원천 효과·unknown을 구분하세요.'; },
+    renderAction({
+      status, event, actionId, target, receipt, observation,
+      message, confirmationExpiresAt, error
+    } = {}) {
+      const root = document.createElement('section');
+      root.setAttribute('aria-label', '보안 조치 요청 및 실제 결과');
+      const add = (tag, text) => {
+        const node = document.createElement(tag);
+        node.textContent = String(text);
+        root.appendChild(node);
+        return node;
+      };
+      const available = value => value !== null && value !== undefined && value !== '';
+      const safe = value => {
+        if (!available(value)) return '확인 불가';
+        return String(value)
+          .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[민감정보 생략]')
+          .replace(/Bearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [민감정보 생략]')
+          .replace(/((?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|secret)\s*[:=]\s*)\S+/gi, '$1[민감정보 생략]');
+      };
+      const field = (label, value) => {
+        if (available(value)) add('p', label + ': ' + safe(value));
+      };
+      const requery = () => add('p',
+        '성공으로도 효과 없음으로도 판단하지 마세요. 제공 화면의 「연동 시스템 결과만 재조회」 버튼을 직접 누르세요.');
+      add('h3', '보안 조치 요청 상태');
+
+      if (status === 'idle') {
+        add('p', '아직 미실행(idle). AI 제안은 실제 조치가 아닙니다.');
+        if (Array.isArray(event?.supportedActions) && event.supportedActions.length === 0) {
+          add('p', '현재 연동 시스템이 지원하는 조치가 없어 조치 준비 버튼이 표시되지 않는 것이 정상입니다.');
+        }
+        return root;
+      }
+
+      if (status === 'error') {
+        add('p', '요청 처리 안 됨(error). 서버 집행 결과가 확인된 상태가 아닙니다.');
+        field('오류 코드', error?.code);
+        add('p', '오류 메시지: ' + safe(error?.message));
+        add('p', '제공 화면에서 오류를 확인하고 직접 다시 시도하세요. 조치 실행 성공으로 판단하지 마세요.');
+        return root;
+      }
+
+      // 수신 상태와 현재 사건·요청을 구분한다. 표식은 실제 상태의 입력이 있을 때만 붙인다.
+      const knownStates = [
+        'loading', 'prepared', 'executing', 'pending', 'succeeded',
+        'denied', 'failed', 'unknown', 'expired'
+      ];
+      const known = knownStates.includes(status);
+      if (known && available(event?.id)) {
+        root.setAttribute('data-student-action-event', String(event.id));
+      }
+      if (known && available(receipt?.requestId)) {
+        root.setAttribute('data-student-action-request', String(receipt.requestId));
+      }
+
+      const receiptEventConflict = available(event?.id) && available(receipt?.eventId) &&
+        String(event.id) !== String(receipt.eventId);
+      const receiptActionConflict = available(actionId) && available(receipt?.actionId) &&
+        String(actionId) !== String(receipt.actionId);
+      const hasConflict = receiptEventConflict || receiptActionConflict;
+
+      if (status === 'loading') {
+        add('p', '조치 준비 또는 결과 조회 중(loading). 집행 완료나 실제 효과가 확인된 상태가 아닙니다.');
+      } else if (status === 'prepared') {
+        add('p', '준비됨·미실행(prepared). 아직 실제 보안 조치는 실행되지 않았습니다.');
+        add('p', '제공 화면의 「대상과 조치를 확인했으며 집행합니다」 버튼으로 사람이 직접 확인한 뒤에만 전달할 수 있습니다.');
+        field('사람 확인 기한(confirmationExpiresAt)', confirmationExpiresAt);
+      } else if (status === 'executing') {
+        add('p', '서버에 전달 중(executing). 결과가 아직 없으며 조치 완료가 아닙니다.');
+      } else if (status === 'pending') {
+        add('p', '서버 접수·처리 중(pending). 접수 응답(ACK)은 실제 효과를 의미하지 않습니다.');
+        add('p', '원천 시스템에서의 처리 결과는 아직 확인되지 않았습니다.');
+      } else if (status === 'succeeded') {
+        if (observation?.effectApplied === true && !hasConflict) {
+          add('p', '효과 확인(succeeded). 연동 시스템이 실제 효과를 확인했습니다.');
+          add('p', 'effectApplied: true');
+          add('p', '관측 시각: ' + safe(observation?.observedAt));
+          add('p', '효과 확인 영수증 ID: ' + safe(receipt?.receiptId));
+        } else {
+          add('p', '결과 불명(unknown). 효과 확인 조건을 충족하지 못했습니다.');
+          requery();
+        }
+      } else if (status === 'denied') {
+        add('p', '연동 시스템에서 조치 요청을 거절했습니다(denied). 효과 확인이 아닙니다.');
+      } else if (status === 'failed') {
+        add('p', '연동 시스템의 조치 처리가 실패했습니다(failed). 효과 확인이 아닙니다.');
+      } else if (status === 'unknown') {
+        add('p', '결과 불명(unknown). 실제 집행 결과를 확인할 수 없습니다.');
+        requery();
+      } else if (status === 'expired') {
+        add('p', '확인 기한이 지났습니다(expired). 제공 화면에서 조치를 다시 준비하세요.');
+        add('p', '기존 확인 기한으로 집행하지 마세요.');
+      } else {
+        add('p', '조치 상태 확인 불가. 성공 또는 미실행으로 단정할 수 없습니다.');
+      }
+
+      if (hasConflict) {
+        add('p', '사건 또는 조치 식별자가 현재 요청과 일치하지 않습니다. 이 영수증으로 실제 효과를 확인할 수 없습니다.');
+        requery();
+      }
+
+      field('사건 ID(event.id)', event?.id);
+      if (Array.isArray(event?.evidence)) {
+        for (const item of event.evidence) {
+          field('사건 근거 ID(evidence.id)', item?.id);
+        }
+      }
+      field('조치 ID(actionId)', actionId);
+      field('대상 ID(target.id)', target?.id);
+      field('대상 세대(target.generation)', target?.generation);
+      field('영수증 사건 ID(receipt.eventId)', receipt?.eventId);
+      field('영수증 조치 ID(receipt.actionId)', receipt?.actionId);
+      field('요청 ID(receipt.requestId)', receipt?.requestId);
+      field('접수 영수증 ID(receipt.receiptId)', receipt?.receiptId);
+      field('영수증 상태(receipt.status)', receipt?.status);
+      field('영수증 버전(receipt.version)', receipt?.version);
+      if (receipt?.replayed !== undefined && receipt?.replayed !== null) {
+        add('p', '중복 요청 여부(replayed): ' + String(receipt.replayed));
+        if (receipt.replayed === true) {
+          add('p', '동일 요청의 접수 결과를 재사용했습니다. 새 집행 성공을 의미하지 않습니다.');
+        }
+      }
+      if (receipt?.superseded !== undefined && receipt?.superseded !== null) {
+        add('p', '이전 요청 대체 여부(superseded): ' + String(receipt.superseded));
+      }
+      if (observation !== null && observation !== undefined) {
+        add('p', '원천 효과 관측값(effectApplied): ' +
+          (observation.effectApplied == null ? '확인 불가' : String(observation.effectApplied)));
+        field('원천 관측 시각(observedAt)', observation?.observedAt);
+      }
+      field('안내 메시지', message);
+      add('p', '이 학생 화면에는 조치 버튼이 없습니다. 제공 화면의 버튼을 직접 눌러 진행하세요.');
+      add('p', '「조치 화면 취소」는 이미 서버에 전달된 효과를 되돌리지 않습니다.');
+      return root;
+    },
   };
 }
